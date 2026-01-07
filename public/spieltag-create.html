@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Darts App – Neuen Spieltag anlegen</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+  <div class="container py-5">
+    <div class="row justify-content-center">
+      <div class="col-12 col-lg-8">
+        <div class="card shadow">
+          <div class="card-header bg-primary text-white">
+            <h3 class="mb-0">Neuen Spieltag anlegen</h3>
+          </div>
+          <div class="card-body">
+            <form id="createSpieltagForm">
+              <!-- Teilnehmer Auswahl -->
+              <div class="mb-4">
+                <label class="form-label fw-bold">Teilnehmer auswählen (mind. 2)</label>
+                <div id="usersList" class="border rounded p-3 bg-white" style="max-height: 300px; overflow-y: auto;">
+                  <p>Lade User...</p>
+                </div>
+              </div>
+
+              <!-- Modus und Legs -->
+              <div class="row mb-4">
+                <div class="col-md-6">
+                  <label class="form-label fw-bold">Modus</label>
+                  <select class="form-select" id="modus">
+                    <option value="best_of" selected>Best of</option>
+                    <option value="first_to">First to</option>
+                  </select>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label fw-bold">Anzahl Legs</label>
+                  <select class="form-select" id="runden">
+                    <option value="2">2</option>
+                    <option value="3" selected>3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="7">7</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Hin- / Rückrunde -->
+              <div class="mb-4">
+                <label class="form-label fw-bold">Rundentyp</label>
+                <select class="form-select" id="rundenTyp">
+                  <option value="hin" selected>Nur Hinrunde</option>
+                  <option value="hin_rueck">Hin- und Rückrunde</option>
+                </select>
+              </div>
+
+              <button type="submit" class="btn btn-success btn-lg w-100">
+                Spieltag anlegen & Spielplan generieren
+              </button>
+            </form>
+
+            <div id="result" class="mt-4"></div>
+          </div>
+        </div>
+
+        <div class="text-center mt-4">
+          <a href="dashboard.html" class="btn btn-secondary">Zurück zum Dashboard</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Nicht eingeloggt!');
+      window.location.href = 'index.html';
+    }
+
+    // Alle User laden
+    async function loadUsers() {
+      try {
+        const res = await fetch('http://localhost:3000/api/users', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const users = await res.json();
+        const container = document.getElementById('usersList');
+        container.innerHTML = '';
+
+        users.forEach(user => {
+          const div = document.createElement('div');
+          div.className = 'form-check';
+          div.innerHTML = `
+            <input class="form-check-input" type="checkbox" value="${user._id}" id="user_${user._id}">
+            <label class="form-check-label" for="user_${user._id}">${user.username}</label>
+          `;
+          container.appendChild(div);
+        });
+      } catch (err) {
+        document.getElementById('usersList').innerHTML = '<p class="text-danger">Fehler beim Laden der User</p>';
+      }
+    }
+
+    // Formular absenden
+    document.getElementById('createSpieltagForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const checked = document.querySelectorAll('#usersList input[type="checkbox"]:checked');
+      const teilnehmerIds = Array.from(checked).map(cb => cb.value);
+
+      if (teilnehmerIds.length < 2) {
+        alert('Bitte mindestens 2 Teilnehmer auswählen!');
+        return;
+      }
+
+      const data = {
+        teilnehmerIds,
+        modus: document.getElementById('modus').value,
+        runden: parseInt(document.getElementById('runden').value),
+        rundenTyp: document.getElementById('rundenTyp').value
+      };
+
+      try {
+        const res = await fetch('http://localhost:3000/api/spieltag/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(data)
+        });
+
+        const result = await res.json();
+        const resultDiv = document.getElementById('result');
+
+        if (res.ok) {
+          resultDiv.innerHTML = `
+            <div class="alert alert-success">
+              <strong>Erfolg!</strong> ${result.message}<br>
+              Spieltag-ID: ${result.spieltagId}<br><br>
+              <a href="spieltag-view.html?id=${result.spieltagId}" class="btn btn-primary">
+                Zum Spieltag & Spielplan anzeigen
+              </a>
+            </div>
+          `;
+        } else {
+          resultDiv.innerHTML = `<div class="alert alert-danger">${result.error}</div>`;
+        }
+      } catch (err) {
+        document.getElementById('result').innerHTML = '<div class="alert alert-danger">Verbindungsfehler</div>';
+      }
+    });
+
+    // Beim Laden User holen
+    loadUsers();
+  </script>
+</body>
+</html>
