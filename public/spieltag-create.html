@@ -80,9 +80,14 @@
     // Alle User laden
     async function loadUsers() {
       try {
-        const res = await fetch('http://localhost:3000/api/users', {
+        const res = await fetch('/api/users', {  // Relative URL – funktioniert überall
           headers: { 'Authorization': `Bearer ${token}` }
         });
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+
         const users = await res.json();
         const container = document.getElementById('usersList');
         container.innerHTML = '';
@@ -97,6 +102,7 @@
           container.appendChild(div);
         });
       } catch (err) {
+        console.error('Fehler beim Laden der User:', err);
         document.getElementById('usersList').innerHTML = '<p class="text-danger">Fehler beim Laden der User</p>';
       }
     }
@@ -104,6 +110,7 @@
     // Formular absenden
     document.getElementById('createSpieltagForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+
       const checked = document.querySelectorAll('#usersList input[type="checkbox"]:checked');
       const teilnehmerIds = Array.from(checked).map(cb => cb.value);
 
@@ -120,7 +127,7 @@
       };
 
       try {
-        const res = await fetch('http://localhost:3000/api/spieltag/create', {
+        const res = await fetch('/api/spieltag/create', {  // Relative URL – funktioniert überall
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -143,9 +150,10 @@
             </div>
           `;
         } else {
-          resultDiv.innerHTML = `<div class="alert alert-danger">${result.error}</div>`;
+          resultDiv.innerHTML = `<div class="alert alert-danger">${result.error || 'Unbekannter Fehler'}</div>`;
         }
       } catch (err) {
+        console.error('Fehler beim Anlegen:', err);
         document.getElementById('result').innerHTML = '<div class="alert alert-danger">Verbindungsfehler</div>';
       }
     });
