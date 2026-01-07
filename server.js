@@ -13,13 +13,13 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_123';
 
-// CORS für alle erlauben
+// CORS für alle erlauben (lokal + online)
 app.use(cors());
 
 // Body Parser
 app.use(bodyParser.json());
 
-// Statische Dateien aus public servieren
+// Statische Dateien aus public servieren – das reicht für alle HTML-Dateien
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Root-Route: Login-Seite laden
