@@ -7,12 +7,9 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
-
   <div class="container py-5">
     <div class="row justify-content-center">
       <div class="col-12 col-lg-8">
-
-        <!-- Willkommens-Card -->
         <div class="card shadow mb-5">
           <div class="card-body p-5 text-center">
             <h1 class="display-5 fw-bold mb-4">🎯 Darts App Dashboard</h1>
@@ -20,34 +17,24 @@
           </div>
         </div>
 
-        <!-- Aktions-Buttons -->
         <div class="row g-4">
           <div class="col-md-6">
             <a href="spieltag-create.html" class="btn btn-success btn-lg w-100 py-5 shadow-sm">
               <h4 class="mb-0">Neuen Spieltag anlegen</h4>
-              <small class="d-block mt-2 text-white-50">Teilnehmer wählen • Modus festlegen • Spielplan generieren</small>
             </a>
           </div>
 
           <div class="col-md-6">
             <button id="logoutBtn" class="btn btn-danger btn-lg w-100 py-5 shadow-sm">
               <h4 class="mb-0">Ausloggen</h4>
-              <small class="d-block mt-2 text-white-50">Sitzung beenden</small>
             </button>
           </div>
         </div>
-
-        <!-- Platzhalter für zukünftige Features -->
-        <div class="text-center mt-5">
-          <p class="text-muted">Mehr Funktionen (aktuelle Spieltage, Statistiken, Rangliste) kommen bald...</p>
-        </div>
-
       </div>
     </div>
   </div>
 
   <script>
-    // Token prüfen
     const token = localStorage.getItem('token');
 
     if (!token) {
@@ -55,15 +42,15 @@
       window.location.href = 'index.html';
     }
 
-    // Token auf Server prüfen (extra Sicherheit)
-    fetch('http://localhost:3000/api/protected', {
+    // Token prüfen
+    fetch('/api/protected', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
     .then(res => {
-      if (!res.ok) throw new Error('Ungültig');
+      if (!res.ok) throw new Error();
     })
     .catch(() => {
-      alert('Sitzung abgelaufen oder ungültig. Bitte neu einloggen.');
+      alert('Sitzung abgelaufen. Bitte neu einloggen.');
       localStorage.removeItem('token');
       window.location.href = 'index.html';
     });
@@ -75,6 +62,5 @@
       window.location.href = 'index.html';
     });
   </script>
-
 </body>
 </html>
