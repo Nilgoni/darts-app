@@ -1,155 +1,133 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Darts App – Spieltag</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
-  <div class="container py-5">
-    <h1 class="text-center mb-5">🎯 Spieltag</h1>
+<script>
+  const token = localStorage.getItem('token');
+  if (!token) {
+    alert('Nicht eingeloggt!');
+    window.location.href = 'index.html';
+  }
 
-    <div id="info" class="card shadow mb-4">
-      <div class="card-body">
-        <p>Lade Spieltag...</p>
-      </div>
-    </div>
+  const urlParams = new URLSearchParams(window.location.search);
+  const spieltagId = urlParams.get('id');
 
-    <h3 class="mt-5">Spielplan & Ergebnisse</h3>
-    <div id="matches" class="mb-5"></div>
+  if (!spieltagId) {
+    alert('Keine Spieltag-ID gefunden!');
+    window.location.href = 'dashboard.html';
+  }
 
-    <h3>Tabellen</h3>
-    <div class="row">
-      <div class="col-lg-6">
-        <h5>Dieser Spieltag</h5>
-        <table class="table table-striped" id="currentTable"></table>
-      </div>
-      <div class="col-lg-6">
-        <h5>Gesamt (kumuliert)</h5>
-        <table class="table table-striped" id="overallTable"></table>
-      </div>
-    </div>
+  async function loadSpieltag() {
+    try {
+      const res = await fetch(`/api/spieltag/${spieltagId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
 
-    <div class="text-center mt-4">
-      <a href="dashboard.html" class="btn btn-secondary">Zurück zum Dashboard</a>
-    </div>
-  </div>
-
-  <script>
-    const token = localStorage.getItem('token');
-    if (!token) {
-      alert('Nicht eingeloggt!');
-      window.location.href = 'index.html';
-    }
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const spieltagId = urlParams.get('id');
-
-    if (!spieltagId) {
-      alert('Keine Spieltag-ID!');
-      window.location.href = 'dashboard.html';
-    }
-
-    async function loadSpieltag() {
-      try {
-        const res = await fetch(`http://localhost:3000/api/spieltag/${spieltagId}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const data = await res.json();
-
-        document.getElementById('info').innerHTML = `
-          <p><strong>Modus:</strong> ${data.spieltag.modus === 'best_of' ? 'Best of' : 'First to'} ${data.spieltag.runden}</p>
-          <p><strong>Rundentyp:</strong> ${data.spieltag.rundenTyp === 'hin' ? 'Nur Hinrunde' : 'Hin- und Rückrunde'}</p>
-          <p><strong>Teilnehmer:</strong> ${data.spieltag.teilnehmer.map(u => u.username).join(', ')}</p>
-        `;
-
-        const matchesDiv = document.getElementById('matches');
-        matchesDiv.innerHTML = '';
-
-        data.matches.forEach((match, index) => {
-          const div = document.createElement('div');
-          div.className = 'card mb-3 shadow-sm';
-          div.innerHTML = `
-            <div class="card-body">
-              <h5>Match ${index + 1}</h5>
-              <p class="lead">
-                ${match.spieler1.username} vs ${match.spieler2.username}
-                ${match.starter ? `<br><small>Startet: ${match.starter.username}</small>` : ''}
-              </p>
-              ${match.abgeschlossen ? `
-                <p class="text-success fw-bold">Ergebnis: ${match.legsSpieler1}:${match.legsSpieler2}</p>
-              ` : `
-                <div class="row align-items-center">
-                  <div class="col">
-                    <input type="number" min="0" max="10" class="form-control" placeholder="${match.spieler1.username}" value="${match.legsSpieler1}" id="legs1_${match._id}">
-                  </div>
-                  <div class="col-auto">:</div>
-                  <div class="col">
-                    <input type="number" min="0" max="10" class="form-control" placeholder="${match.spieler2.username}" value="${match.legsSpieler2}" id="legs2_${match._id}">
-                  </div>
-                  <div class="col-auto">
-                    <button class="btn btn-primary" onclick="saveMatch('${match._id}')">Speichern</button>
-                  </div>
-                </div>
-              `}
-            </div>
-          `;
-          matchesDiv.appendChild(div);
-        });
-
-        loadTabelle();
-      } catch (err) {
-        document.getElementById('info').innerHTML = '<p class="text-danger">Fehler beim Laden</p>';
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Status ${res.status}: ${errorText}`);
       }
+
+      const data = await res.json();
+
+      document.getElementById('info').innerHTML = `
+        <p><strong>Modus:</strong> ${data.spieltag.modus === 'best_of' ? 'Best of' : 'First to'} ${data.spieltag.runden}</p>
+        <p><strong>Rundentyp:</strong> ${data.spieltag.rundenTyp === 'hin' ? 'Nur Hinrunde' : 'Hin- und Rückrunde'}</p>
+        <p><strong>Teilnehmer:</strong> ${data.spieltag.teilnehmer.map(u => u.username).join(', ')}</p>
+      `;
+
+      const matchesDiv = document.getElementById('matches');
+      matchesDiv.innerHTML = '';
+
+      data.matches.forEach((match, index) => {
+        const div = document.createElement('div');
+        div.className = 'card mb-3 shadow-sm';
+        div.innerHTML = `
+          <div class="card-body">
+            <h5>Match ${index + 1}</h5>
+            <p class="lead">
+              ${match.spieler1.username} vs ${match.spieler2.username}
+              ${match.starter ? `<br><small>Startet: ${match.starter.username}</small>` : ''}
+            </p>
+            ${match.abgeschlossen ? `
+              <p class="text-success fw-bold">Ergebnis: ${match.legsSpieler1}:${match.legsSpieler2}</p>
+            ` : `
+              <div class="row align-items-center">
+                <div class="col">
+                  <input type="number" min="0" max="10" class="form-control" placeholder="${match.spieler1.username}" value="${match.legsSpieler1}" id="legs1_${match._id}">
+                </div>
+                <div class="col-auto">:</div>
+                <div class="col">
+                  <input type="number" min="0" max="10" class="form-control" placeholder="${match.spieler2.username}" value="${match.legsSpieler2}" id="legs2_${match._id}">
+                </div>
+                <div class="col-auto">
+                  <button class="btn btn-primary" onclick="saveMatch('${match._id}')">Speichern</button>
+                </div>
+              </div>
+            `}
+          </div>
+        `;
+        matchesDiv.appendChild(div);
+      });
+
+      loadTabelle();
+    } catch (err) {
+      console.error('Fehler beim Laden des Spieltages:', err);
+      document.getElementById('info').innerHTML = '<p class="text-danger">Fehler beim Laden des Spieltages (siehe Console)</p>';
     }
+  }
 
-    async function saveMatch(matchId) {
-      const legs1 = parseInt(document.getElementById(`legs1_${matchId}`).value) || 0;
-      const legs2 = parseInt(document.getElementById(`legs2_${matchId}`).value) || 0;
+  async function saveMatch(matchId) {
+    const legs1 = parseInt(document.getElementById(`legs1_${matchId}`).value) || 0;
+    const legs2 = parseInt(document.getElementById(`legs2_${matchId}`).value) || 0;
 
-      try {
-        const res = await fetch('http://localhost:3000/api/match/update', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ matchId, legs1, legs2 })
-        });
-        const result = await res.json();
+    try {
+      const res = await fetch('/api/match/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ matchId, legs1, legs2 })
+      });
+
+      const result = await res.json();
+      if (res.ok) {
         alert(result.message || 'Gespeichert!');
         loadSpieltag();
-      } catch (err) {
-        alert('Fehler beim Speichern');
+      } else {
+        alert(result.error || 'Fehler beim Speichern');
       }
+    } catch (err) {
+      console.error('Fehler beim Speichern:', err);
+      alert('Verbindungsfehler');
     }
+  }
 
-    async function loadTabelle() {
-      try {
-        const res = await fetch(`http://localhost:3000/api/tabelle/${spieltagId}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+  async function loadTabelle() {
+    try {
+      const res = await fetch(`/api/tabelle/${spieltagId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (!res.ok) throw new Error('Tabelle Fehler');
+
+      const data = await res.json();
+
+      const makeTableHTML = (tableData, id) => {
+        if (tableData.length === 0) return '<p>Noch keine Ergebnisse</p>';
+        let html = '<thead><tr><th>Platz</th><th>Spieler</th><th>Spiele</th><th>Punkte</th><th>Legs</th><th>Diff</th></tr></thead><tbody>';
+        tableData.forEach((row, i) => {
+          html += `<tr><td>${i+1}</td><td>${row.username}</td><td>${row.spiele}</td><td>${row.punkte}</td><td>${row.legsFor}:${row.legsAgainst}</td><td>${row.diff > 0 ? '+' : ''}${row.diff}</td></tr>`;
         });
-        const data = await res.json();
+        html += '</tbody>';
+        return html;
+      };
 
-        const makeTableHTML = (tableData, id) => {
-          if (tableData.length === 0) return '<p>Noch keine Ergebnisse</p>';
-          let html = '<thead><tr><th>Platz</th><th>Spieler</th><th>Spiele</th><th>Punkte</th><th>Legs</th><th>Diff</th></tr></thead><tbody>';
-          tableData.forEach((row, i) => {
-            html += `<tr><td>${i+1}</td><td>${row.username}</td><td>${row.spiele}</td><td>${row.punkte}</td><td>${row.legsFor}:${row.legsAgainst}</td><td>${row.diff > 0 ? '+' : ''}${row.diff}</td></tr>`;
-          });
-          html += '</tbody>';
-          return html;
-        };
-
-        document.getElementById('currentTable').innerHTML = makeTableHTML(data.current);
-        document.getElementById('overallTable').innerHTML = makeTableHTML(data.overall);
-      } catch (err) {
-        console.error(err);
-      }
+      document.getElementById('currentTable').innerHTML = makeTableHTML(data.current);
+      document.getElementById('overallTable').innerHTML = makeTableHTML(data.overall);
+    } catch (err) {
+      console.error('Fehler beim Laden der Tabelle:', err);
+      document.getElementById('currentTable').innerHTML = '<p class="text-danger">Fehler beim Laden</p>';
+      document.getElementById('overallTable').innerHTML = '<p class="text-danger">Fehler beim Laden</p>';
     }
+  }
 
-    loadSpieltag();
-  </script>
-</body>
-</html>
+  loadSpieltag();
+</script>
