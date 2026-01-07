@@ -13,13 +13,13 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_123';
 
-// CORS für alle erlauben (lokal + online)
+// CORS für alle erlauben
 app.use(cors());
 
 // Body Parser
 app.use(bodyParser.json());
 
-// Statische Dateien aus public servieren – das reicht für alle HTML-Dateien
+// Statische Dateien aus public servieren
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Root-Route: Login-Seite laden
@@ -48,7 +48,7 @@ const spieltagSchema = new mongoose.Schema({
   runden: { type: Number, default: 3 },
   rundenTyp: { type: String, enum: ['hin', 'hin_rueck'], default: 'hin' },
   matches: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Match' }],
-  abgeschlossen: { type: Boolean, default: false }
+  abgeschlossen: { type: Boolean, default: false } // Flag für beendet
 });
 const Spieltag = mongoose.model('Spieltag', spieltagSchema);
 
@@ -78,12 +78,11 @@ const authenticate = async (req, res, next) => {
   }
 };
 
-// API-Routen mit Logging
+// API-Routen
 
 app.post('/make-admin', async (req, res) => {
-  console.log('make-admin Anfrage:', req.body);
+  const { username } = req.body;
   try {
-    const { username } = req.body;
     const user = await User.findOne({ username });
     if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
     user.isAdmin = true;
@@ -96,16 +95,13 @@ app.post('/make-admin', async (req, res) => {
 });
 
 app.post('/register', async (req, res) => {
-  console.log('Registrierung Anfrage:', req.body);
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'Username und Passwort erforderlich' });
   try {
-    const { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ error: 'Username und Passwort erforderlich' });
-    const existingUser = await User.findOne({ username });
-    if (existingUser) return res.status(400).json({ error: 'Username existiert bereits' });
+    if (await User.findOne({ username })) return res.status(400).json({ error: 'Username existiert bereits' });
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = new User({ username, password: hashedPassword });
     await newUser.save();
-    console.log('User erfolgreich erstellt:', username);
     res.status(201).json({ message: 'Registrierung erfolgreich' });
   } catch (err) {
     console.error('Fehler bei Registrierung:', err);
@@ -114,9 +110,8 @@ app.post('/register', async (req, res) => {
 });
 
 app.post('/login', async (req, res) => {
-  console.log('Login Anfrage:', req.body);
+  const { username, password } = req.body;
   try {
-    const { username, password } = req.body;
     const user = await User.findOne({ username });
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ error: 'Falscher Username oder Passwort' });
@@ -134,7 +129,6 @@ app.get('/api/protected', authenticate, (req, res) => {
 });
 
 app.get('/api/users', authenticate, async (req, res) => {
-  console.log('api/users Anfrage von:', req.user.username);
   try {
     const users = await User.find({}, 'username _id');
     res.json(users);
@@ -145,7 +139,6 @@ app.get('/api/users', authenticate, async (req, res) => {
 });
 
 app.post('/api/spieltag/create', authenticate, async (req, res) => {
-  console.log('spieltag/create Anfrage von:', req.user.username, req.body);
   const { teilnehmerIds, modus, runden, rundenTyp } = req.body;
 
   if (!teilnehmerIds || teilnehmerIds.length < 2) return res.status(400).json({ error: 'Mindestens 2 Teilnehmer erforderlich' });
@@ -221,7 +214,6 @@ app.post('/api/spieltag/create', authenticate, async (req, res) => {
 });
 
 app.get('/api/spieltag/:id', authenticate, async (req, res) => {
-  console.log('spieltag/:id Anfrage:', req.params.id);
   try {
     const spieltag = await Spieltag.findById(req.params.id)
       .populate('teilnehmer', 'username')
@@ -253,7 +245,6 @@ app.get('/api/spieltag/:id', authenticate, async (req, res) => {
 });
 
 app.post('/api/match/update', authenticate, async (req, res) => {
-  console.log('match/update Anfrage:', req.body);
   const { matchId, legs1, legs2 } = req.body;
   try {
     const match = await Match.findById(matchId);
@@ -272,7 +263,6 @@ app.post('/api/match/update', authenticate, async (req, res) => {
 });
 
 app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
-  console.log('tabelle/:spieltagId Anfrage:', req.params.spieltagId);
   try {
     const currentSpieltag = await Spieltag.findById(req.params.spieltagId)
       .populate({
