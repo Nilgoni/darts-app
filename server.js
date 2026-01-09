@@ -238,11 +238,20 @@ app.get('/api/spieltag/:id', authenticate, async (req, res) => {
 app.post('/api/match/update', authenticate, async (req, res) => {
   const { matchId, legs1, legs2 } = req.body;
   try {
-    const match = await Match.findById(matchId);
+    const match = await Match.findById(matchId)
+      .populate('spieler1')
+      .populate('spieler2');
     if (!match) return res.status(404).json({ error: 'Match nicht gefunden' });
 
     const spieltag = await Spieltag.findById(match.spieltag);
     if (spieltag.abgeschlossen) return res.status(400).json({ error: 'Spieltag ist beendet – Ergebnisse nicht mehr änderbar' });
+
+    // Neu: Nur beteiligte Spieler (oder Admins) dürfen updaten
+    if (!match.spieler1._id.equals(req.user._id) && 
+        !match.spieler2._id.equals(req.user._id) && 
+        !req.user.isAdmin) {
+      return res.status(403).json({ error: 'Du bist nicht berechtigt, dieses Match zu bearbeiten' });
+    }
 
     match.legsSpieler1 = legs1;
     match.legsSpieler2 = legs2;
