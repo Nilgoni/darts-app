@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Strafen Managen</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+  <div class="container mt-5">
+    <h1>Strafen Managen</h1>
+    <button id="addTypeBtn" class="btn btn-success mb-3">Neue Strafe anlegen</button>
+    <table class="table" id="typesTable">
+      <thead>
+        <tr><th>Title</th><th>Wer zahlt</th><th>Betrag</th><th>Aktionen</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <a href="dashboard.html" class="btn btn-secondary">Zurück zum Dashboard</a>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Nicht eingeloggt!');
+      window.location.href = 'index.html';
+    }
+
+    async function loadTypes() {
+      try {
+        const res = await fetch('/api/strafetypes', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const types = await res.json();
+        const tbody = document.querySelector('#typesTable tbody');
+        tbody.innerHTML = '';
+        types.forEach(t => {
+          tbody.innerHTML += `
+            <tr>
+              <td>${t.title}</td>
+              <td>${t.whoPays}</td>
+              <td>${t.betrag}</td>
+              <td>
+                <button class="btn btn-sm btn-primary" onclick="editType('${t._id}')">Edit</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteType('${t._id}')">Löschen</button>
+              </td>
+            </tr>
+          `;
+        });
+      } catch (err) {
+        alert('Fehler beim Laden');
+      }
+    }
+
+    document.getElementById('addTypeBtn').addEventListener('click', () => {
+      const title = prompt('Title:');
+      const whoPays = prompt('Wer zahlt (werfer/alle_anderen):');
+      const betrag = parseFloat(prompt('Betrag:'));
+      if (title && whoPays && !isNaN(betrag)) {
+        fetch('/api/strafetype/add', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ title, whoPays, betrag })
+        }).then(() => loadTypes());
+      }
+    });
+
+    function editType(id) {
+      const title = prompt('Neuer Title:');
+      const whoPays = prompt('Neuer Wer zahlt:');
+      const betrag = parseFloat(prompt('Neuer Betrag:'));
+      if (title && whoPays && !isNaN(betrag)) {
+        fetch(`/api/strafetype/${id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ title, whoPays, betrag })
+        }).then(() => loadTypes());
+      }
+    }
+
+    function deleteType(id) {
+      if (confirm('Löschen?')) {
+        fetch(`/api/strafetype/${id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        }).then(() => loadTypes());
+      }
+    }
+
+    loadTypes();
+  </script>
+</body>
+</html>
