@@ -253,6 +253,21 @@ app.post('/api/spieltag/:id/close', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Serverfehler' });
   }
 });
+app.post('/api/spieltag/:id/delete', authenticate, async (req, res) => {
+  try {
+    const spieltag = await Spieltag.findById(req.params.id);
+    if (!spieltag) return res.status(404).json({ error: 'Spieltag nicht gefunden' });
+    if (spieltag.abgeschlossen) return res.status(400).json({ error: 'Nur offene Spieltage können gelöscht werden' });
+    // Lösche alle Matches des Spieltages
+    await Match.deleteMany({ _id: { $in: spieltag.matches } });
+    // Lösche den Spieltag
+    await spieltag.remove();
+    res.json({ message: 'Spieltag gelöscht' });
+  } catch (err) {
+    console.error('Fehler beim Löschen:', err);
+    res.status(500).json({ error: 'Serverfehler' });
+  }
+});
 app.get('/api/spieltage', authenticate, async (req, res) => {
   try {
     const spieltage = await Spieltag.find({})
@@ -267,7 +282,9 @@ app.get('/api/spieltage', authenticate, async (req, res) => {
 });
 app.get('/api/overall-tabelle', authenticate, async (req, res) => {
   try {
-    const allMatches = await Match.find({ abgeschlossen: true })
+    const closedSpieltage = await Spieltag.find({ abgeschlossen: true }).select('_id');
+    const closedIds = closedSpieltage.map(s => s._id);
+    const allMatches = await Match.find({ abgeschlossen: true, spieltag: { $in: closedIds } })
       .populate('spieler1', 'username')
       .populate('spieler2', 'username');
 
@@ -338,7 +355,9 @@ app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
       });
     if (!currentSpieltag) return res.status(404).json({ error: 'Spieltag nicht gefunden' });
 
-    const allMatches = await Match.find({ abgeschlossen: true })
+    const closedSpieltage = await Spieltag.find({ abgeschlossen: true }).select('_id');
+    const closedIds = closedSpieltage.map(s => s._id);
+    const allMatches = await Match.find({ abgeschlossen: true, spieltag: { $in: closedIds } })
       .populate('spieler1', 'username')
       .populate('spieler2', 'username');
 
