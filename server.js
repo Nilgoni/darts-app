@@ -367,7 +367,7 @@ app.get('/api/gesamtsumme', authenticate, async (req, res) => {
       if (strafe.typeId.whoPays === 'werfer') {
         total += betrag;
       } else if (strafe.typeId.whoPays === 'alle_anderen') {
-        const teilnehmerCount = strafe.spieltag.teilnehmer.length;
+        const teilnehmerCount = strafe.spieltag ? strafe.spieltag.teilnehmer.length : 0;
         total += betrag * (teilnehmerCount - 1);
       }
     }
@@ -415,17 +415,17 @@ app.get('/api/overall-tabelle', authenticate, async (req, res) => {
     allStrafen.forEach(s => {
       const werferId = s.werfer._id.toString();
       const betrag = s.typeId.betrag;
-      if (s.typeId.whoPays === 'werfer') {
-        const ws = overallStats.get(werferId) || { strafen: 0 };
-        ws.strafen += betrag;
-        overallStats.set(werferId, ws);
-      } else if (s.typeId.whoPays === 'alle_anderen') {
-        const spieltag = closedSpieltage.find(sp => sp._id.equals(s.spieltag));
-        if (spieltag) {
+      const spieltag = closedSpieltage.find(sp => sp._id.equals(s.spieltag));
+      if (spieltag) {
+        if (s.typeId.whoPays === 'werfer') {
+          const ws = overallStats.get(werferId) || { strafen: 0, user: s.werfer };
+          ws.strafen += betrag;
+          overallStats.set(werferId, ws);
+        } else if (s.typeId.whoPays === 'alle_anderen') {
           spieltag.teilnehmer.forEach(t => {
             const tId = t._id.toString();
             if (tId !== werferId) {
-              const ts = overallStats.get(tId) || { strafen: 0 };
+              const ts = overallStats.get(tId) || { strafen: 0, user: t };
               ts.strafen += betrag;
               overallStats.set(tId, ts);
             }
@@ -456,13 +456,16 @@ app.get('/api/overall-tabelle', authenticate, async (req, res) => {
 });
 app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
   try {
-    const currentSpieltag = await Spieltag.findById(req.params.id).populate('teilnehmer');
-    const currentMatches = await Match.find({ spieltag: req.params.id, abgeschlossen: true })
-      .populate('spieler1', 'username')
-      .populate('spieler2', 'username');
-    const currentStrafen = await Strafe.find({ spieltag: req.params.id })
-      .populate('werfer', 'username')
-      .populate('typeId');
+    const currentSpieltag = await Spieltag.findById(req.params.spieltagId)
+      .populate('teilnehmer')
+      .populate({
+        path: 'matches',
+        populate: [
+          { path: 'spieler1', select: 'username' },
+          { path: 'spieler2', select: 'username' }
+        ]
+      });
+    if (!currentSpieltag) return res.status(404).json({ error: 'Spieltag nicht gefunden' });
 
     const closedSpieltage = await Spieltag.find({ abgeschlossen: true }).populate('teilnehmer');
     const closedIds = closedSpieltage.map(s => s._id);
@@ -470,6 +473,9 @@ app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
       .populate('spieler1', 'username')
       .populate('spieler2', 'username');
     const allStrafen = await Strafe.find({ spieltag: { $in: closedIds } })
+      .populate('werfer', 'username')
+      .populate('typeId');
+    const currentStrafen = await Strafe.find({ spieltag: req.params.spieltagId })
       .populate('werfer', 'username')
       .populate('typeId');
 
@@ -482,19 +488,19 @@ app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
     currentSpieltag.teilnehmer.forEach(t => {
       currentStats.set(t._id.toString(), { user: t, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 });
     });
-    currentMatches.forEach(m => {
+    currentSpieltag.matches.forEach(m => {
       const p1Id = m.spieler1._id.toString();
       const p2Id = m.spieler2._id.toString();
       const s1 = currentStats.get(p1Id);
       const s2 = currentStats.get(p2Id);
-      s1.spiele += 1;
-      s2.spiele += 1;
-      s1.legsFor += m.legsSpieler1;
-      s1.legsAgainst += m.legsSpieler2;
-      s2.legsFor += m.legsSpieler2;
-      s2.legsAgainst += m.legsSpieler1;
-      if (m.legsSpieler1 > m.legsSpieler2) s1.punkte += calcPoints(m.legsSpieler1, m.legsSpieler2);
-      else if (m.legsSpieler2 > m.legsSpieler1) s2.punkte += calcPoints(m.legsSpieler2, m.legsSpieler1);
+      if (s1) s1.spiele += 1;
+      if (s2) s2.spiele += 1;
+      if (s1) s1.legsFor += m.legsSpieler1;
+      if (s1) s1.legsAgainst += m.legsSpieler2;
+      if (s2) s2.legsFor += m.legsSpieler2;
+      if (s2) s2.legsAgainst += m.legsSpieler1;
+      if (m.legsSpieler1 > m.legsSpieler2 && s1) s1.punkte += calcPoints(m.legsSpieler1, m.legsSpieler2);
+      else if (m.legsSpieler2 > m.legsSpieler1 && s2) s2.punkte += calcPoints(m.legsSpieler2, m.legsSpieler1);
     });
     currentStrafen.forEach(s => {
       const werferId = s.werfer._id.toString();
@@ -536,14 +542,14 @@ app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
       const spieltag = closedSpieltage.find(sp => sp._id.equals(s.spieltag));
       if (spieltag) {
         if (s.typeId.whoPays === 'werfer') {
-          const ws = overallStats.get(werferId) || { strafen: 0 };
+          const ws = overallStats.get(werferId) || { strafen: 0, user: s.werfer };
           ws.strafen += betrag;
           overallStats.set(werferId, ws);
         } else if (s.typeId.whoPays === 'alle_anderen') {
           spieltag.teilnehmer.forEach(t => {
             const tId = t._id.toString();
             if (tId !== werferId) {
-              const ts = overallStats.get(tId) || { strafen: 0 };
+              const ts = overallStats.get(tId) || { strafen: 0, user: t };
               ts.strafen += betrag;
               overallStats.set(tId, ts);
             }
