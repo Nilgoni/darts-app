@@ -157,13 +157,14 @@
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` }
           });
-          const result = await res.json();
           if (res.ok) {
+            const result = await res.json();
             alert('Spieltag gelöscht!');
             loadSpieltage(); // Liste neu laden
             loadOverallTabelle(); // Tabelle aktualisieren
           } else {
-            alert(result.error);
+            const result = await res.json();
+            alert(result.error || 'Unbekannter Fehler');
           }
         } catch (err) {
           alert('Fehler beim Löschen: ' + err.message);
