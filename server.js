@@ -6,32 +6,25 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
-
 dotenv.config();
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_123';
-
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
-
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
-
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('MongoDB verbunden!'))
   .catch(err => console.error('MongoDB Fehler:', err));
-
 const userSchema = new mongoose.Schema({
   username: { type: String, unique: true, required: true },
   password: { type: String, required: true },
   isAdmin: { type: Boolean, default: false }
 });
 const User = mongoose.model('User', userSchema);
-
 const spieltagSchema = new mongoose.Schema({
   datum: { type: Date, default: Date.now },
   ersteller: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -43,7 +36,6 @@ const spieltagSchema = new mongoose.Schema({
   abgeschlossen: { type: Boolean, default: false }
 });
 const Spieltag = mongoose.model('Spieltag', spieltagSchema);
-
 const matchSchema = new mongoose.Schema({
   spieltag: { type: mongoose.Schema.Types.ObjectId, ref: 'Spieltag' },
   spieler1: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -54,7 +46,6 @@ const matchSchema = new mongoose.Schema({
   abgeschlossen: { type: Boolean, default: false }
 });
 const Match = mongoose.model('Match', matchSchema);
-
 const authenticate = async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Kein Token' });
@@ -68,7 +59,6 @@ const authenticate = async (req, res, next) => {
     res.status(403).json({ error: 'Ungültiger Token' });
   }
 };
-
 app.post('/make-admin', async (req, res) => {
   const { username } = req.body;
   try {
@@ -82,7 +72,6 @@ app.post('/make-admin', async (req, res) => {
     res.status(500).json({ error: 'Serverfehler' });
   }
 });
-
 app.post('/register', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Username und Passwort erforderlich' });
@@ -98,7 +87,6 @@ app.post('/register', async (req, res) => {
     res.status(500).json({ error: 'Serverfehler' });
   }
 });
-
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
   try {
@@ -113,11 +101,9 @@ app.post('/login', async (req, res) => {
     res.status(500).json({ error: 'Serverfehler' });
   }
 });
-
 app.get('/api/protected', authenticate, (req, res) => {
   res.json({ message: 'Willkommen auf der geschützten Seite!' });
 });
-
 app.get('/api/users', authenticate, async (req, res) => {
   try {
     const users = await User.find({}, 'username _id');
@@ -127,15 +113,12 @@ app.get('/api/users', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Serverfehler' });
   }
 });
-
 app.post('/api/spieltag/create', authenticate, async (req, res) => {
   const { teilnehmerIds, modus, runden, rundenTyp } = req.body;
-
   if (!teilnehmerIds || teilnehmerIds.length < 2) return res.status(400).json({ error: 'Mindestens 2 Teilnehmer erforderlich' });
   if (!['best_of', 'first_to'].includes(modus)) return res.status(400).json({ error: 'Ungültiger Modus' });
   if (![2, 3, 4, 5, 7].includes(runden)) return res.status(400).json({ error: 'Ungültige Runden-Anzahl' });
   if (!['hin', 'hin_rueck'].includes(rundenTyp)) return res.status(400).json({ error: 'Ungültiger Runden-Typ' });
-
   try {
     const spieltag = new Spieltag({
       ersteller: req.user._id,
@@ -145,7 +128,6 @@ app.post('/api/spieltag/create', authenticate, async (req, res) => {
       rundenTyp
     });
     await spieltag.save();
-
     let pairings = [];
     for (let i = 0; i < teilnehmerIds.length; i++) {
       for (let j = i + 1; j < teilnehmerIds.length; j++) {
@@ -155,31 +137,24 @@ app.post('/api/spieltag/create', authenticate, async (req, res) => {
         }
       }
     }
-
     const matches = [];
     const lastPlayed = new Map(teilnehmerIds.map(id => [id.toString(), -1]));
-
     for (let round = 0; round < pairings.length; round++) {
-      let available = pairings.filter(p => 
-        !matches.some(m => 
+      let available = pairings.filter(p =>
+        !matches.some(m =>
           (m.spieler1.toString() === p.spieler1.toString() && m.spieler2.toString() === p.spieler2.toString()) ||
           (m.spieler1.toString() === p.spieler2.toString() && m.spieler2.toString() === p.spieler1.toString())
         )
       );
-
       if (available.length === 0) break;
-
       let candidates = available.map(pair => ({
         pair,
         maxWait: Math.max(round - lastPlayed.get(pair.spieler1.toString()), round - lastPlayed.get(pair.spieler2.toString()))
       }));
-
       const maxWait = Math.max(...candidates.map(c => c.maxWait));
       let best = candidates.filter(c => c.maxWait === maxWait);
       const chosen = best[Math.floor(Math.random() * best.length)].pair;
-
       const starter = (matches.length % 2 === 0) ? chosen.spieler1 : chosen.spieler2;
-
       const match = new Match({
         spieltag: spieltag._id,
         spieler1: chosen.spieler1,
@@ -187,14 +162,11 @@ app.post('/api/spieltag/create', authenticate, async (req, res) => {
         starter
       });
       await match.save();
-
       matches.push(match);
       spieltag.matches.push(match._id);
-
       lastPlayed.set(chosen.spieler1.toString(), round);
       lastPlayed.set(chosen.spieler2.toString(), round);
     }
-
     await spieltag.save();
     res.json({ message: 'Spieltag erfolgreich angelegt', spieltagId: spieltag._id });
   } catch (err) {
@@ -202,21 +174,34 @@ app.post('/api/spieltag/create', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Serverfehler beim Anlegen' });
   }
 });
-
+app.post('/api/reset-all', authenticate, async (req, res) => {
+  if (req.user.username !== 'Bernd') {
+    return res.status(403).json({ error: 'Nur Bernd darf das ausführen' });
+  }
+  try {
+    // Lösche alle Matches
+    await Match.deleteMany({});
+    // Lösche alle Spieltage
+    await Spieltag.deleteMany({});
+    // Optional: Setze User-Stats zurück, falls du Felder wie wins/losses im User-Model hast
+    // await User.updateMany({}, { $set: { wins: 0, losses: 0 } }); // Füge das hinzu, wenn nötig
+    res.json({ message: 'Alles zurückgesetzt!' });
+  } catch (err) {
+    console.error('Fehler beim Reset:', err);
+    res.status(500).json({ error: 'Serverfehler beim Reset' });
+  }
+});
 app.get('/api/spieltag/:id', authenticate, async (req, res) => {
   try {
     const spieltag = await Spieltag.findById(req.params.id)
       .populate('teilnehmer', 'username')
       .populate('matches');
-
     if (!spieltag) return res.status(404).json({ error: 'Spieltag nicht gefunden' });
-
     const populatedMatches = await Match.populate(spieltag.matches, [
       { path: 'spieler1', select: 'username' },
       { path: 'spieler2', select: 'username' },
       { path: 'starter', select: 'username' }
     ]);
-
     res.json({
       spieltag: {
         _id: spieltag._id,
@@ -234,7 +219,6 @@ app.get('/api/spieltag/:id', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Serverfehler' });
   }
 });
-
 app.post('/api/match/update', authenticate, async (req, res) => {
   const { matchId, legs1, legs2 } = req.body;
   try {
@@ -242,29 +226,27 @@ app.post('/api/match/update', authenticate, async (req, res) => {
       .populate('spieler1')
       .populate('spieler2');
     if (!match) return res.status(404).json({ error: 'Match nicht gefunden' });
-
     const spieltag = await Spieltag.findById(match.spieltag);
     if (spieltag.abgeschlossen) return res.status(400).json({ error: 'Spieltag ist beendet – Ergebnisse nicht mehr änderbar' });
-
     // Neu: Nur beteiligte Spieler (oder Admins) dürfen updaten
-    if (!match.spieler1._id.equals(req.user._id) && 
-        !match.spieler2._id.equals(req.user._id) && 
+    if (!match.spieler1._id.equals(req.user._id) &&
+        !match.spieler2._id.equals(req.user._id) &&
         !req.user.isAdmin) {
       return res.status(403).json({ error: 'Du bist nicht berechtigt, dieses Match zu bearbeiten' });
     }
-
     match.legsSpieler1 = legs1;
     match.legsSpieler2 = legs2;
     match.abgeschlossen = true;
     await match.save();
-
     res.json({ message: 'Ergebnis gespeichert' });
   } catch (err) {
     console.error('Fehler bei Match update:', err);
     res.status(500).json({ error: 'Serverfehler' });
   }
 });
-
+app.get('/api/user', authenticate, (req, res) => {
+  res.json({ username: req.user.username, isAdmin: req.user.isAdmin });
+});
 app.post('/api/spieltag/:id/close', authenticate, async (req, res) => {
   try {
     const spieltag = await Spieltag.findById(req.params.id);
@@ -278,7 +260,6 @@ app.post('/api/spieltag/:id/close', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Serverfehler' });
   }
 });
-
 app.get('/api/spieltage', authenticate, async (req, res) => {
   try {
     const spieltage = await Spieltag.find({})
@@ -291,7 +272,6 @@ app.get('/api/spieltage', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Serverfehler' });
   }
 });
-
 app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
   try {
     const currentSpieltag = await Spieltag.findById(req.params.spieltagId)
@@ -302,40 +282,30 @@ app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
           { path: 'spieler2', select: 'username' }
         ]
       });
-
     const allMatches = await Match.find({ abgeschlossen: true })
       .populate('spieler1', 'username')
       .populate('spieler2', 'username');
-
     const calcPoints = (legsWin, legsLose) => {
       if (legsWin > legsLose) return (legsWin - legsLose >= 2) ? 3 : 2;
       return 0;
     };
-
     const stats = new Map();
-
     const addMatchToStats = (match, isCurrentOnly = false) => {
       if (!match.abgeschlossen) return;
-
       const p1 = match.spieler1._id.toString();
       const p2 = match.spieler2._id.toString();
-
       if (!stats.has(p1)) stats.set(p1, { user: match.spieler1, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, currentOnly: { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0 } });
       if (!stats.has(p2)) stats.set(p2, { user: match.spieler2, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, currentOnly: { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0 } });
-
       const s1 = stats.get(p1);
       const s2 = stats.get(p2);
-
       s1.spiele += 1;
       s2.spiele += 1;
       s1.legsFor += match.legsSpieler1;
       s1.legsAgainst += match.legsSpieler2;
       s2.legsFor += match.legsSpieler2;
       s2.legsAgainst += match.legsSpieler1;
-
       if (match.legsSpieler1 > match.legsSpieler2) s1.punkte += calcPoints(match.legsSpieler1, match.legsSpieler2);
       else if (match.legsSpieler2 > match.legsSpieler1) s2.punkte += calcPoints(match.legsSpieler2, match.legsSpieler1);
-
       if (!isCurrentOnly) {
         s1.currentOnly.spiele += 1;
         s2.currentOnly.spiele += 1;
@@ -343,15 +313,12 @@ app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
         s1.currentOnly.legsAgainst += match.legsSpieler2;
         s2.currentOnly.legsFor += match.legsSpieler2;
         s2.currentOnly.legsAgainst += match.legsSpieler1;
-
         if (match.legsSpieler1 > match.legsSpieler2) s1.currentOnly.punkte += calcPoints(match.legsSpieler1, match.legsSpieler2);
         else if (match.legsSpieler2 > match.legsSpieler1) s2.currentOnly.punkte += calcPoints(match.legsSpieler2, match.legsSpieler1);
       }
     };
-
     currentSpieltag.matches.forEach(m => addMatchToStats(m, true));
     allMatches.forEach(m => addMatchToStats(m));
-
     const makeTable = (data) => {
       return Array.from(stats.values())
         .map(s => ({
@@ -364,14 +331,12 @@ app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
         }))
         .sort((a, b) => b.punkte - a.punkte || b.diff - a.diff || b.legsFor - a.legsFor);
     };
-
     res.json({ current: makeTable(true), overall: makeTable(false) });
   } catch (err) {
     console.error('Fehler bei Tabelle:', err);
     res.status(500).json({ error: 'Serverfehler' });
   }
 });
-
 app.listen(PORT, () => {
   console.log(`Server läuft auf Port ${PORT}`);
 });
