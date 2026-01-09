@@ -106,6 +106,7 @@
         });
         if (!res.ok) throw new Error('Fehler beim Laden: Status ' + res.status);
         const spieltage = await res.json();
+        console.log('Geladene Spieltage:', spieltage); // Debug-Log
         const active = spieltage.filter(s => !s.abgeschlossen);
         const closed = spieltage.filter(s => s.abgeschlossen);
         let activeHTML = '<h3 class="mt-5">Aktuelle Spieltage (bearbeitbar)</h3><ul class="list-group">';
@@ -113,9 +114,11 @@
           activeHTML += '<li class="list-group-item">Keine aktiven Spieltage</li>';
         } else {
           active.forEach(s => {
+            const erstellerName = s.ersteller ? s.ersteller.username : 'Unbekannt';
+            const teilnehmerNames = s.teilnehmer ? s.teilnehmer.map(t => t.username).join(', ') : 'Keine Teilnehmer';
             activeHTML += `
               <li class="list-group-item">
-                <a href="spieltag-view.html?id=${s._id}">${new Date(s.datum).toLocaleDateString('de-DE')} - Ersteller: ${s.ersteller.username} - Teilnehmer: ${s.teilnehmer.map(t => t.username).join(', ')}</a>
+                <a href="spieltag-view.html?id=${s._id}">${new Date(s.datum).toLocaleDateString('de-DE')} - Ersteller: ${erstellerName} - Teilnehmer: ${teilnehmerNames}</a>
               </li>
             `;
           });
@@ -126,9 +129,11 @@
           closedHTML += '<li class="list-group-item">Keine abgeschlossenen Spieltage</li>';
         } else {
           closed.forEach(s => {
+            const erstellerName = s.ersteller ? s.ersteller.username : 'Unbekannt';
+            const teilnehmerNames = s.teilnehmer ? s.teilnehmer.map(t => t.username).join(', ') : 'Keine Teilnehmer';
             closedHTML += `
               <li class="list-group-item">
-                <a href="spieltag-view.html?id=${s._id}">${new Date(s.datum).toLocaleDateString('de-DE')} - Ersteller: ${s.ersteller.username} - Teilnehmer: ${s.teilnehmer.map(t => t.username).join(', ')}</a>
+                <a href="spieltag-view.html?id=${s._id}">${new Date(s.datum).toLocaleDateString('de-DE')} - Ersteller: ${erstellerName} - Teilnehmer: ${teilnehmerNames}</a>
               </li>
             `;
           });
