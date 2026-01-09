@@ -3,52 +3,29 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Darts App – Spieltag</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <title>Spieltag Ansicht</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
-  <div class="container py-5">
-    <h1 class="text-center mb-5">🎯 Spieltag</h1>
-
-    <div id="info" class="card shadow mb-4">
-      <div class="card-body">
-        <p>Lade Spieltag...</p>
-      </div>
-    </div>
-
-    <h3 class="mt-5">Spielplan & Ergebnisse</h3>
-    <div id="matches" class="mb-5"></div>
-
-    <h3>Tabellen</h3>
-    <div class="row">
-      <div class="col-lg-6">
-        <h5>Dieser Spieltag</h5>
-        <table class="table table-striped" id="currentTable"></table>
-      </div>
-      <div class="col-lg-6">
-        <h5>Gesamt (kumuliert)</h5>
-        <table class="table table-striped" id="overallTable"></table>
-      </div>
-    </div>
-
-    <div class="text-center mt-4">
-      <a href="dashboard.html" class="btn btn-secondary">Zurück zum Dashboard</a>
-    </div>
+  <div class="container mt-5">
+    <h1>Spieltag</h1>
+    <div id="spieltagInfo" class="mb-4"></div>
+    <h2>Spielplan & Ergebnisse</h2>
+    <div id="matches"></div>
+    <button id="closeBtn" class="btn btn-warning mt-3">Spieltag beenden</button>
+    <h2>Tabellen</h2>
+    <div id="tabellen"></div>
+    <a href="dashboard.html" class="btn btn-secondary mt-4">Zurück zum Dashboard</a>
   </div>
 
   <script>
-    const token = localStorage.getItem('token');
-    if (!token) {
-      alert('Nicht eingeloggt!');
-      window.location.href = 'index.html';
-    }
-
     const urlParams = new URLSearchParams(window.location.search);
     const spieltagId = urlParams.get('id');
+    const token = localStorage.getItem('token');
 
-    if (!spieltagId) {
-      alert('Keine Spieltag-ID!');
-      window.location.href = 'dashboard.html';
+    if (!token || !spieltagId) {
+      alert('Fehler: Nicht eingeloggt oder keine ID');
+      window.location.href = 'index.html';
     }
 
     async function loadSpieltag() {
@@ -56,90 +33,62 @@
         const res = await fetch(`/api/spieltag/${spieltagId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-
-        if (!res.ok) {
-          const errorText = await res.text();
-          throw new Error(`Status ${res.status}: ${errorText}`);
-        }
-
+        if (!res.ok) throw new Error('Fehler beim Laden');
         const data = await res.json();
 
-        document.getElementById('info').innerHTML = `
-          <p><strong>Modus:</strong> ${data.spieltag.modus === 'best_of' ? 'Best of' : 'First to'} ${data.spieltag.runden}</p>
-          <p><strong>Rundentyp:</strong> ${data.spieltag.rundenTyp === 'hin' ? 'Nur Hinrunde' : 'Hin- und Rückrunde'}</p>
-          <p><strong>Teilnehmer:</strong> ${data.spieltag.teilnehmer.map(u => u.username).join(', ')}</p>
+        // Spieltag-Info anzeigen
+        const modusText = data.spieltag.modus === 'best_of' ? 'Best of' : 'First to';
+        const rundenTypText = data.spieltag.rundenTyp === 'hin' ? 'Nur Hinrunde' : 'Hin- und Rückrunde';
+        document.getElementById('spieltagInfo').innerHTML = `
+          <p>Modus: ${modusText} ${data.spieltag.runden}</p>
+          <p>Rundentyp: ${rundenTypText}</p>
+          <p>Teilnehmer: ${data.spieltag.teilnehmer.map(t => t.username).join(', ')}</p>
         `;
 
+        // Matches anzeigen
         const matchesDiv = document.getElementById('matches');
         matchesDiv.innerHTML = '';
-
         data.matches.forEach((match, index) => {
-          const div = document.createElement('div');
-          div.className = 'card mb-3 shadow-sm';
-          div.innerHTML = `
+          const card = document.createElement('div');
+          card.className = 'card mb-3';
+          card.innerHTML = `
             <div class="card-body">
-              <h5>Match ${index + 1}</h5>
-              <p class="lead">
-                ${match.spieler1.username} vs ${match.spieler2.username}
-                ${match.starter ? `<br><small>Startet: ${match.starter.username}</small>` : ''}
-              </p>
-              ${match.abgeschlossen ? `
-                <p class="text-success fw-bold">Ergebnis: ${match.legsSpieler1}:${match.legsSpieler2}</p>
+              <h5 class="card-title">Match ${index + 1}</h5>
+              <p class="card-text">${match.spieler1.username} vs ${match.spieler2.username}</p>
+              <p class="card-text">Starter: ${match.starter.username}</p>
+              ${!data.spieltag.abgeschlossen ? `
+                <input type="number" id="legs1_${match._id}" value="${match.legsSpieler1}" min="0" class="form-control d-inline-block w-25">
+                :
+                <input type="number" id="legs2_${match._id}" value="${match.legsSpieler2}" min="0" class="form-control d-inline-block w-25">
+                <button class="btn btn-primary ms-2" onclick="saveMatch('${match._id}')">Speichern</button>
               ` : `
-                <div class="row align-items-center">
-                  <div class="col">
-                    <input type="number" min="0" max="10" class="form-control" placeholder="${match.spieler1.username}" value="${match.legsSpieler1}" id="legs1_${match._id}">
-                  </div>
-                  <div class="col-auto">:</div>
-                  <div class="col">
-                    <input type="number" min="0" max="10" class="form-control" placeholder="${match.spieler2.username}" value="${match.legsSpieler2}" id="legs2_${match._id}">
-                  </div>
-                  <div class="col-auto">
-                    <button class="btn btn-primary" onclick="saveMatch('${match._id}')">Speichern</button>
-                  </div>
-                </div>
+                <p class="text-success">Ergebnis: ${match.legsSpieler1}:${match.legsSpieler2}</p>
               `}
             </div>
           `;
-          matchesDiv.appendChild(div);
+          matchesDiv.appendChild(card);
         });
 
-        loadTabelle();
+        // Close-Button handhaben
+        const closeBtn = document.getElementById('closeBtn');
+        if (data.spieltag.abgeschlossen) {
+          closeBtn.style.display = 'none';
+        } else {
+          closeBtn.addEventListener('click', closeSpieltag);
+        }
+
+        // Tabellen laden
+        loadTabellen();
       } catch (err) {
-        console.error('Fehler beim Laden des Spieltages:', err);
-        document.getElementById('info').innerHTML = '<p class="text-danger">Fehler beim Laden des Spieltages</p>';
+        alert('Fehler beim Laden des Spieltages');
+        console.error(err);
       }
     }
-
-    async function closeSpieltag() {
-  if (confirm('Spieltag wirklich beenden? Danach keine Änderungen mehr möglich.')) {
-    try {
-      const res = await fetch(`/api/spieltag/${spieltagId}/close`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const result = await res.json();
-      if (res.ok) {
-        alert('Spieltag beendet!');
-        loadSpieltag();
-      } else {
-        alert(result.error);
-      }
-    } catch (err) {
-      alert('Fehler beim Beenden');
-    }
-  }
-}
-
-// Füge Button ins UI (z.B. nach #matches)
-document.getElementById('matches').insertAdjacentHTML('afterend', `
-  <button id="closeBtn" class="btn btn-warning mt-3">Spieltag beenden</button>
-`);
-document.getElementById('closeBtn').addEventListener('click', closeSpieltag);
 
     async function saveMatch(matchId) {
-      const legs1 = parseInt(document.getElementById(`legs1_${matchId}`).value) || 0;
-      const legs2 = parseInt(document.getElementById(`legs2_${matchId}`).value) || 0;
+      const legs1 = parseInt(document.getElementById(`legs1_${matchId}`).value);
+      const legs2 = parseInt(document.getElementById(`legs2_${matchId}`).value);
+      if (isNaN(legs1) || isNaN(legs2)) return alert('Ungültige Eingabe');
 
       try {
         const res = await fetch('/api/match/update', {
@@ -150,46 +99,93 @@ document.getElementById('closeBtn').addEventListener('click', closeSpieltag);
           },
           body: JSON.stringify({ matchId, legs1, legs2 })
         });
-
         const result = await res.json();
         if (res.ok) {
-          alert(result.message || 'Gespeichert!');
-          loadSpieltag();
+          alert('Ergebnis gespeichert!');
+          loadSpieltag(); // Reload to update view
         } else {
-          alert(result.error || 'Fehler beim Speichern');
+          alert(result.error);
         }
       } catch (err) {
-        console.error('Fehler beim Speichern:', err);
-        alert('Verbindungsfehler');
+        alert('Fehler beim Speichern');
       }
     }
 
-    async function loadTabelle() {
+    async function closeSpieltag() {
+      if (confirm('Spieltag wirklich beenden? Danach keine Änderungen mehr möglich.')) {
+        try {
+          const res = await fetch(`/api/spieltag/${spieltagId}/close`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const result = await res.json();
+          if (res.ok) {
+            alert('Spieltag beendet!');
+            loadSpieltag();
+          } else {
+            alert(result.error);
+          }
+        } catch (err) {
+          alert('Fehler beim Beenden');
+        }
+      }
+    }
+
+    async function loadTabellen() {
       try {
         const res = await fetch(`/api/tabelle/${spieltagId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-
-        if (!res.ok) throw new Error('Tabelle Fehler');
-
+        if (!res.ok) throw new Error('Fehler beim Laden der Tabellen');
         const data = await res.json();
 
-        const makeTableHTML = (tableData) => {
-          if (tableData.length === 0) return '<p>Noch keine Ergebnisse</p>';
-          let html = '<thead><tr><th>Platz</th><th>Spieler</th><th>Spiele</th><th>Punkte</th><th>Legs</th><th>Diff</th></tr></thead><tbody>';
-          tableData.forEach((row, i) => {
-            html += `<tr><td>${i+1}</td><td>${row.username}</td><td>${row.spiele}</td><td>${row.punkte}</td><td>${row.legsFor}:${row.legsAgainst}</td><td>${row.diff > 0 ? '+' : ''}${row.diff}</td></tr>`;
-          });
-          html += '</tbody>';
-          return html;
-        };
-
-        document.getElementById('currentTable').innerHTML = makeTableHTML(data.current);
-        document.getElementById('overallTable').innerHTML = makeTableHTML(data.overall);
+        const tabellenDiv = document.getElementById('tabellen');
+        tabellenDiv.innerHTML = `
+          <div class="row">
+            <div class="col-md-6">
+              <h3>Dieser Spieltag</h3>
+              <table class="table">
+                <thead>
+                  <tr><th>Platz</th><th>Spieler</th><th>Spiele</th><th>Punkte</th><th>Legs</th><th>Diff</th></tr>
+                </thead>
+                <tbody>
+                  ${data.current.map((row, index) => `
+                    <tr>
+                      <td>${index + 1}</td>
+                      <td>${row.username}</td>
+                      <td>${row.spiele}</td>
+                      <td>${row.punkte}</td>
+                      <td>${row.legsFor}:${row.legsAgainst}</td>
+                      <td>${row.diff}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+            <div class="col-md-6">
+              <h3>Gesamt (kumuliert)</h3>
+              <table class="table">
+                <thead>
+                  <tr><th>Platz</th><th>Spieler</th><th>Spiele</th><th>Punkte</th><th>Legs</th><th>Diff</th></tr>
+                </thead>
+                <tbody>
+                  ${data.overall.map((row, index) => `
+                    <tr>
+                      <td>${index + 1}</td>
+                      <td>${row.username}</td>
+                      <td>${row.spiele}</td>
+                      <td>${row.punkte}</td>
+                      <td>${row.legsFor}:${row.legsAgainst}</td>
+                      <td>${row.diff}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
       } catch (err) {
-        console.error('Fehler beim Laden der Tabelle:', err);
-        document.getElementById('currentTable').innerHTML = '<p class="text-danger">Fehler beim Laden</p>';
-        document.getElementById('overallTable').innerHTML = '<p class="text-danger">Fehler beim Laden</p>';
+        console.error('Fehler beim Laden der Tabellen:', err);
       }
     }
 
