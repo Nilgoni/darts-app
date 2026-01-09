@@ -94,6 +94,7 @@
         }
       } catch (err) {
         console.error('Fehler beim Laden des Users:', err);
+        alert('Fehler beim Laden des Users: ' + err.message);
       }
     }
 
@@ -103,7 +104,7 @@
         const res = await fetch('/api/spieltage', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (!res.ok) throw new Error('Fehler beim Laden');
+        if (!res.ok) throw new Error('Fehler beim Laden: Status ' + res.status);
         const spieltage = await res.json();
         const active = spieltage.filter(s => !s.abgeschlossen);
         const closed = spieltage.filter(s => s.abgeschlossen);
@@ -137,6 +138,7 @@
         spieltageContainer.innerHTML = activeHTML + closedHTML;
       } catch (err) {
         console.error('Fehler beim Laden der Spieltage:', err);
+        alert('Fehler beim Laden der Spieltage: ' + err.message);
       }
     }
 
@@ -146,7 +148,7 @@
         const res = await fetch('/api/overall-tabelle', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (!res.ok) throw new Error('Fehler beim Laden der Tabelle');
+        if (!res.ok) throw new Error('Fehler beim Laden der Tabelle: Status ' + res.status);
         const data = await res.json();
 
         let tableHTML = '<h3 class="mt-5">Ewige Tabelle</h3><table class="table"><thead><tr><th>Platz</th><th>Spieler</th><th>Spiele</th><th>Punkte</th><th>Legs</th><th>Diff</th></tr></thead><tbody>';
@@ -172,6 +174,7 @@
         tabelleContainer.innerHTML = tableHTML;
       } catch (err) {
         console.error('Fehler beim Laden der Ewigen Tabelle:', err);
+        alert('Fehler beim Laden der Ewigen Tabelle: ' + err.message);
       }
     }
 
