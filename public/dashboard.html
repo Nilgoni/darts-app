@@ -20,128 +20,171 @@
     </div>
   </div>
 
-<script>
-  const token = localStorage.getItem('token');
-  if (!token) {
-    alert('Du bist nicht eingeloggt!');
-    window.location.href = 'index.html';
-  }
-  // Token prüfen
-  fetch('/api/protected', {
-    headers: { 'Authorization': `Bearer ${token}` }
-  })
-  .then(res => {
-    if (!res.ok) throw new Error();
-  })
-  .catch(() => {
-    alert('Sitzung abgelaufen. Bitte neu einloggen.');
-    localStorage.removeItem('token');
-    window.location.href = 'index.html';
-  });
-  // Ausloggen
-  document.getElementById('logoutBtn').addEventListener('click', () => {
-    localStorage.removeItem('token');
-    alert('Erfolgreich ausgeloggt');
-    window.location.href = 'index.html';
-  });
-  // Neuen Spieltag anlegen Button
-  document.getElementById('createSpieltagBtn').addEventListener('click', () => {
-    window.location.href = 'spieltag-create.html';
-  });
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Du bist nicht eingeloggt!');
+      window.location.href = 'index.html';
+    }
+    // Token prüfen
+    fetch('/api/protected', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => {
+      if (!res.ok) throw new Error();
+    })
+    .catch(() => {
+      alert('Sitzung abgelaufen. Bitte neu einloggen.');
+      localStorage.removeItem('token');
+      window.location.href = 'index.html';
+    });
+    // Ausloggen
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      localStorage.removeItem('token');
+      alert('Erfolgreich ausgeloggt');
+      window.location.href = 'index.html';
+    });
+    // Neuen Spieltag anlegen Button
+    document.getElementById('createSpieltagBtn').addEventListener('click', () => {
+      window.location.href = 'spieltag-create.html';
+    });
 
-  // Neu: User-Info laden, um zu checken, ob Bernd
-  let currentUsername = '';
-  async function loadUserInfo() {
-    try {
-      const res = await fetch('/api/user', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error('Fehler beim Laden des Users');
-      const data = await res.json();
-      currentUsername = data.username;
+    // Neu: User-Info laden, um zu checken, ob Bernd
+    let currentUsername = '';
+    async function loadUserInfo() {
+      try {
+        const res = await fetch('/api/user', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Fehler beim Laden des Users');
+        const data = await res.json();
+        currentUsername = data.username;
 
-      // Wenn Bernd, füge Reset-Button hinzu
-      if (currentUsername === 'Bernd') {
-        const row = document.querySelector('.row.g-4');
-        row.insertAdjacentHTML('beforeend', `
-          <div class="col-md-6">
-            <button id="resetBtn" class="btn btn-danger btn-lg w-100">Alles zurücksetzen</button>
-          </div>
-        `);
-        // Event-Listener für Reset
-        document.getElementById('resetBtn').addEventListener('click', async () => {
-          if (confirm('Bist du sicher? Das löscht ALLE Spieltage und Matches unwiderruflich!')) {
-            try {
-              const res = await fetch('/api/reset-all', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }
-              });
-              const result = await res.json();
-              if (res.ok) {
-                alert('Alles zurückgesetzt!');
-                loadSpieltage(); // Aktualisiere die Liste
-              } else {
-                alert(result.error);
+        // Wenn Bernd, füge Reset-Button hinzu
+        if (currentUsername === 'Bernd') {
+          const row = document.querySelector('.row.g-4');
+          row.insertAdjacentHTML('beforeend', `
+            <div class="col-md-6">
+              <button id="resetBtn" class="btn btn-danger btn-lg w-100">Alles zurücksetzen</button>
+            </div>
+          `);
+          // Event-Listener für Reset
+          document.getElementById('resetBtn').addEventListener('click', async () => {
+            if (confirm('Bist du sicher? Das löscht ALLE Spieltage und Matches unwiderruflich!')) {
+              try {
+                const res = await fetch('/api/reset-all', {
+                  method: 'POST',
+                  headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await res.json();
+                if (res.ok) {
+                  alert('Alles zurückgesetzt!');
+                  loadSpieltage(); // Aktualisiere die Liste
+                  loadOverallTabelle(); // Aktualisiere die Tabelle
+                } else {
+                  alert(result.error);
+                }
+              } catch (err) {
+                alert('Fehler beim Reset');
               }
-            } catch (err) {
-              alert('Fehler beim Reset');
             }
-          }
-        });
+          });
+        }
+      } catch (err) {
+        console.error('Fehler beim Laden des Users:', err);
       }
-    } catch (err) {
-      console.error('Fehler beim Laden des Users:', err);
     }
-  }
 
-  // Spieltage laden und anzeigen (wie zuvor)
-  async function loadSpieltage() {
-    try {
-      const res = await fetch('/api/spieltage', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error('Fehler beim Laden');
-      const spieltage = await res.json();
-      const active = spieltage.filter(s => !s.abgeschlossen);
-      const closed = spieltage.filter(s => s.abgeschlossen);
-      let activeHTML = '<h3 class="mt-5">Aktuelle Spieltage (bearbeitbar)</h3><ul class="list-group">';
-      if (active.length === 0) {
-        activeHTML += '<li class="list-group-item">Keine aktiven Spieltage</li>';
-      } else {
-        active.forEach(s => {
-          activeHTML += `
-            <li class="list-group-item">
-              <a href="spieltag-view.html?id=${s._id}">${new Date(s.datum).toLocaleDateString('de-DE')} - Ersteller: ${s.ersteller.username} - Teilnehmer: ${s.teilnehmer.map(t => t.username).join(', ')}</a>
-            </li>
-          `;
+    // Spieltage laden und anzeigen
+    async function loadSpieltage() {
+      try {
+        const res = await fetch('/api/spieltage', {
+          headers: { 'Authorization': `Bearer ${token}` }
         });
+        if (!res.ok) throw new Error('Fehler beim Laden');
+        const spieltage = await res.json();
+        const active = spieltage.filter(s => !s.abgeschlossen);
+        const closed = spieltage.filter(s => s.abgeschlossen);
+        let activeHTML = '<h3 class="mt-5">Aktuelle Spieltage (bearbeitbar)</h3><ul class="list-group">';
+        if (active.length === 0) {
+          activeHTML += '<li class="list-group-item">Keine aktiven Spieltage</li>';
+        } else {
+          active.forEach(s => {
+            activeHTML += `
+              <li class="list-group-item">
+                <a href="spieltag-view.html?id=${s._id}">${new Date(s.datum).toLocaleDateString('de-DE')} - Ersteller: ${s.ersteller.username} - Teilnehmer: ${s.teilnehmer.map(t => t.username).join(', ')}</a>
+              </li>
+            `;
+          });
+        }
+        activeHTML += '</ul>';
+        let closedHTML = '<h3 class="mt-4">Abgeschlossene Spieltage (nur Ansicht)</h3><ul class="list-group">';
+        if (closed.length === 0) {
+          closedHTML += '<li class="list-group-item">Keine abgeschlossenen Spieltage</li>';
+        } else {
+          closed.forEach(s => {
+            closedHTML += `
+              <li class="list-group-item">
+                <a href="spieltag-view.html?id=${s._id}">${new Date(s.datum).toLocaleDateString('de-DE')} - Ersteller: ${s.ersteller.username} - Teilnehmer: ${s.teilnehmer.map(t => t.username).join(', ')}</a>
+              </li>
+            `;
+          });
+        }
+        closedHTML += '</ul>';
+        const container = document.querySelector('.row.g-4');
+        // Entferne alte Listen, falls vorhanden
+        let nextSib = container.nextElementSibling;
+        while (nextSib && (nextSib.tagName === 'H3' || nextSib.tagName === 'UL')) {
+          nextSib.remove();
+          nextSib = container.nextElementSibling;
+        }
+        container.insertAdjacentHTML('afterend', activeHTML + closedHTML);
+      } catch (err) {
+        console.error('Fehler beim Laden der Spieltage:', err);
       }
-      activeHTML += '</ul>';
-      let closedHTML = '<h3 class="mt-4">Abgeschlossene Spieltage (nur Ansicht)</h3><ul class="list-group">';
-      if (closed.length === 0) {
-        closedHTML += '<li class="list-group-item">Keine abgeschlossenen Spieltage</li>';
-      } else {
-        closed.forEach(s => {
-          closedHTML += `
-            <li class="list-group-item">
-              <a href="spieltag-view.html?id=${s._id}">${new Date(s.datum).toLocaleDateString('de-DE')} - Ersteller: ${s.ersteller.username} - Teilnehmer: ${s.teilnehmer.map(t => t.username).join(', ')}</a>
-            </li>
-          `;
-        });
-      }
-      closedHTML += '</ul>';
-      const container = document.querySelector('.row.g-4');
-      // Entferne alte Listen, falls vorhanden (für Reload nach Reset)
-      const oldLists = container.nextElementSibling;
-      if (oldLists && oldLists.tagName === 'H3') oldLists.remove();
-      container.insertAdjacentHTML('afterend', activeHTML + closedHTML);
-    } catch (err) {
-      console.error('Fehler beim Laden der Spieltage:', err);
     }
-  }
 
-  // Lade User-Info und dann Spieltage
-  loadUserInfo().then(() => loadSpieltage());
-</script>
+    // Ewige Tabelle laden und anzeigen
+    async function loadOverallTabelle() {
+      try {
+        const res = await fetch('/api/overall-tabelle', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Fehler beim Laden der Tabelle');
+        const data = await res.json();
+
+        let tableHTML = '<h3 class="mt-5">Ewige Tabelle</h3><table class="table"><thead><tr><th>Platz</th><th>Spieler</th><th>Spiele</th><th>Punkte</th><th>Legs</th><th>Diff</th></tr></thead><tbody>';
+        if (data.length === 0) {
+          tableHTML += '<tr><td colspan="6">Keine Daten verfügbar</td></tr>';
+        } else {
+          data.forEach((row, index) => {
+            tableHTML += `
+              <tr>
+                <td>${index + 1}</td>
+                <td>${row.username}</td>
+                <td>${row.spiele}</td>
+                <td>${row.punkte}</td>
+                <td>${row.legsFor}:${row.legsAgainst}</td>
+                <td>${row.diff}</td>
+              </tr>
+            `;
+          });
+        }
+        tableHTML += '</tbody></table>';
+
+        const container = document.querySelector('.container');
+        // Füge nach den Spieltagen hinzu (am Ende des Containers)
+        container.insertAdjacentHTML('beforeend', tableHTML);
+      } catch (err) {
+        console.error('Fehler beim Laden der Ewigen Tabelle:', err);
+      }
+    }
+
+    // Lade alles beim Start
+    loadUserInfo().then(() => {
+      loadSpieltage();
+      loadOverallTabelle();
+    });
+  </script>
 </body>
 </html>
