@@ -142,8 +142,7 @@ app.post('/api/spieltag/create', authenticate, async (req, res) => {
     for (let round = 0; round < pairings.length; round++) {
       let available = pairings.filter(p =>
         !matches.some(m =>
-          (m.spieler1.toString() === p.spieler1.toString() && m.spieler2.toString() === p.spieler2.toString()) ||
-          (m.spieler1.toString() === p.spieler2.toString() && m.spieler2.toString() === p.spieler1.toString())
+          m.spieler1.toString() === p.spieler1.toString() && m.spieler2.toString() === p.spieler2.toString()
         )
       );
       if (available.length === 0) break;
@@ -154,7 +153,7 @@ app.post('/api/spieltag/create', authenticate, async (req, res) => {
       const maxWait = Math.max(...candidates.map(c => c.maxWait));
       let best = candidates.filter(c => c.maxWait === maxWait);
       const chosen = best[Math.floor(Math.random() * best.length)].pair;
-      const starter = (matches.length % 2 === 0) ? chosen.spieler1 : chosen.spieler2;
+      const starter = chosen.spieler1;
       const match = new Match({
         spieltag: spieltag._id,
         spieler1: chosen.spieler1,
