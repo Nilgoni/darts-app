@@ -19,7 +19,9 @@
         <button id="logoutBtn" class="btn btn-secondary btn-lg w-100">Ausloggen</button>
       </div>
     </div>
+    <button id="manageStrafenBtn" class="btn btn-info mt-3">Strafen managen</button>
     <div id="spieltage-container"></div>
+    <div id="gesamtsumme" class="mt-4"></div>
     <div id="tabelle-container"></div>
   </div>
 
@@ -50,6 +52,10 @@
     // Neuen Spieltag anlegen Button
     document.getElementById('createSpieltagBtn').addEventListener('click', () => {
       window.location.href = 'spieltag-create.html';
+    });
+    // Strafen managen Button
+    document.getElementById('manageStrafenBtn').addEventListener('click', () => {
+      window.location.href = 'strafen-manage.html';
     });
 
     // Neu: User-Info laden, um zu checken, ob Bernd
@@ -208,10 +214,24 @@
       }
     }
 
+    // Gesamtsumme laden
+    async function loadGesamtsumme() {
+      try {
+        const res = await fetch('/api/gesamtsumme', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        document.getElementById('gesamtsumme').innerHTML = `<p>Gesamte Strafen: ${data.total.toFixed(2)}€</p>`;
+      } catch (err) {
+        console.error('Fehler beim Laden der Gesamtsumme:', err);
+      }
+    }
+
     // Lade alles beim Start
     loadUserInfo().then(() => {
       loadSpieltage();
       loadOverallTabelle();
+      loadGesamtsumme();
     });
   </script>
 </body>
