@@ -360,12 +360,18 @@ app.delete('/api/strafetype/:id', authenticate, async (req, res) => {
 });
 app.get('/api/gesamtsumme', authenticate, async (req, res) => {
   try {
-    const sum = await Strafe.aggregate([
-      { $lookup: { from: 'strafetypes', localField: 'typeId', foreignField: '_id', as: 'type' } },
-      { $unwind: '$type' },
-      { $group: { _id: null, total: { $sum: '$type.betrag' } } }
-    ]);
-    res.json({ total: sum.length ? sum[0].total : 0 });
+    const strafen = await Strafe.find({}).populate('spieltag').populate('typeId');
+    let total = 0;
+    for (const strafe of strafen) {
+      const betrag = strafe.typeId.betrag;
+      if (strafe.typeId.whoPays === 'werfer') {
+        total += betrag;
+      } else if (strafe.typeId.whoPays === 'alle_anderen') {
+        const teilnehmerCount = strafe.spieltag.teilnehmer.length;
+        total += betrag * (teilnehmerCount - 1);
+      }
+    }
+    res.json({ total });
   } catch (err) {
     console.error('Fehler bei Gesamtsumme:', err);
     res.status(500).json({ error: 'Serverfehler' });
@@ -373,7 +379,7 @@ app.get('/api/gesamtsumme', authenticate, async (req, res) => {
 });
 app.get('/api/overall-tabelle', authenticate, async (req, res) => {
   try {
-    const closedSpieltage = await Spieltag.find({ abgeschlossen: true }).select('_id');
+    const closedSpieltage = await Spieltag.find({ abgeschlossen: true }).populate('teilnehmer');
     const closedIds = closedSpieltage.map(s => s._id);
     const allMatches = await Match.find({ abgeschlossen: true, spieltag: { $in: closedIds } })
       .populate('spieler1', 'username')
@@ -387,45 +393,47 @@ app.get('/api/overall-tabelle', authenticate, async (req, res) => {
       return 0;
     };
 
-    // Hilfsfunktion zum Addieren von Stats
-    const addMatchToStats = (statsMap, match) => {
-      if (!match.abgeschlossen) return;
-      const p1Id = match.spieler1._id.toString();
-      const p2Id = match.spieler2._id.toString();
-      const s1 = statsMap.get(p1Id) || { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 };
-      const s2 = statsMap.get(p2Id) || { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 };
-      s1.spiele += 1;
-      s2.spiele += 1;
-      s1.legsFor += match.legsSpieler1;
-      s1.legsAgainst += match.legsSpieler2;
-      s2.legsFor += match.legsSpieler2;
-      s2.legsAgainst += match.legsSpieler1;
-      if (match.legsSpieler1 > match.legsSpieler2) s1.punkte += calcPoints(match.legsSpieler1, match.legsSpieler2);
-      else if (match.legsSpieler2 > match.legsSpieler1) s2.punkte += calcPoints(match.legsSpieler2, match.legsSpieler1);
-      statsMap.set(p1Id, s1);
-      statsMap.set(p2Id, s2);
-    };
-
-    // Hilfsfunktion zum Addieren von Strafen
-    const addStrafeToStats = (statsMap, strafe) => {
-      const werferId = strafe.werfer._id.toString();
-      const s = statsMap.get(werferId) || { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 };
-      s.strafen += strafe.typeId.betrag;
-      statsMap.set(werferId, s);
-    };
-
-    // Overall Tabelle: Alle Matches ever, alle beteiligten Users
     const overallStats = new Map();
+
     allMatches.forEach(m => {
       const p1Id = m.spieler1._id.toString();
       const p2Id = m.spieler2._id.toString();
-      if (!overallStats.has(p1Id)) overallStats.set(p1Id, { user: m.spieler1, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 });
-      if (!overallStats.has(p2Id)) overallStats.set(p2Id, { user: m.spieler2, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 });
-      addMatchToStats(overallStats, m);
+      const s1 = overallStats.get(p1Id) || { user: m.spieler1, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 };
+      const s2 = overallStats.get(p2Id) || { user: m.spieler2, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 };
+      s1.spiele += 1;
+      s2.spiele += 1;
+      s1.legsFor += m.legsSpieler1;
+      s1.legsAgainst += m.legsSpieler2;
+      s2.legsFor += m.legsSpieler2;
+      s2.legsAgainst += m.legsSpieler1;
+      if (m.legsSpieler1 > m.legsSpieler2) s1.punkte += calcPoints(m.legsSpieler1, m.legsSpieler2);
+      else if (m.legsSpieler2 > m.legsSpieler1) s2.punkte += calcPoints(m.legsSpieler2, m.legsSpieler1);
+      overallStats.set(p1Id, s1);
+      overallStats.set(p2Id, s2);
     });
-    allStrafen.forEach(s => addStrafeToStats(overallStats, s));
 
-    // Hilfsfunktion zum Erstellen der Tabelle
+    allStrafen.forEach(s => {
+      const werferId = s.werfer._id.toString();
+      const betrag = s.typeId.betrag;
+      if (s.typeId.whoPays === 'werfer') {
+        const ws = overallStats.get(werferId) || { strafen: 0 };
+        ws.strafen += betrag;
+        overallStats.set(werferId, ws);
+      } else if (s.typeId.whoPays === 'alle_anderen') {
+        const spieltag = closedSpieltage.find(sp => sp._id.equals(s.spieltag));
+        if (spieltag) {
+          spieltag.teilnehmer.forEach(t => {
+            const tId = t._id.toString();
+            if (tId !== werferId) {
+              const ts = overallStats.get(tId) || { strafen: 0 };
+              ts.strafen += betrag;
+              overallStats.set(tId, ts);
+            }
+          });
+        }
+      }
+    });
+
     const makeTable = (statsMap) => {
       return Array.from(statsMap.values())
         .map(s => ({
@@ -448,26 +456,20 @@ app.get('/api/overall-tabelle', authenticate, async (req, res) => {
 });
 app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
   try {
-    const currentSpieltag = await Spieltag.findById(req.params.spieltagId)
-      .populate('teilnehmer')
-      .populate({
-        path: 'matches',
-        populate: [
-          { path: 'spieler1', select: 'username' },
-          { path: 'spieler2', select: 'username' }
-        ]
-      });
-    if (!currentSpieltag) return res.status(404).json({ error: 'Spieltag nicht gefunden' });
+    const currentSpieltag = await Spieltag.findById(req.params.id).populate('teilnehmer');
+    const currentMatches = await Match.find({ spieltag: req.params.id, abgeschlossen: true })
+      .populate('spieler1', 'username')
+      .populate('spieler2', 'username');
+    const currentStrafen = await Strafe.find({ spieltag: req.params.id })
+      .populate('werfer', 'username')
+      .populate('typeId');
 
-    const closedSpieltage = await Spieltag.find({ abgeschlossen: true }).select('_id');
+    const closedSpieltage = await Spieltag.find({ abgeschlossen: true }).populate('teilnehmer');
     const closedIds = closedSpieltage.map(s => s._id);
     const allMatches = await Match.find({ abgeschlossen: true, spieltag: { $in: closedIds } })
       .populate('spieler1', 'username')
       .populate('spieler2', 'username');
     const allStrafen = await Strafe.find({ spieltag: { $in: closedIds } })
-      .populate('werfer', 'username')
-      .populate('typeId');
-    const currentStrafen = await Strafe.find({ spieltag: req.params.spieltagId })
       .populate('werfer', 'username')
       .populate('typeId');
 
@@ -476,53 +478,80 @@ app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
       return 0;
     };
 
-    // Hilfsfunktion zum Addieren von Stats
-    const addMatchToStats = (statsMap, match) => {
-      if (!match.abgeschlossen) return;
-      const p1Id = match.spieler1._id.toString();
-      const p2Id = match.spieler2._id.toString();
-      const s1 = statsMap.get(p1Id) || { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 };
-      const s2 = statsMap.get(p2Id) || { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 };
-      s1.spiele += 1;
-      s2.spiele += 1;
-      s1.legsFor += match.legsSpieler1;
-      s1.legsAgainst += match.legsSpieler2;
-      s2.legsFor += match.legsSpieler2;
-      s2.legsAgainst += match.legsSpieler1;
-      if (match.legsSpieler1 > match.legsSpieler2) s1.punkte += calcPoints(match.legsSpieler1, match.legsSpieler2);
-      else if (match.legsSpieler2 > match.legsSpieler1) s2.punkte += calcPoints(match.legsSpieler2, match.legsSpieler1);
-      statsMap.set(p1Id, s1);
-      statsMap.set(p2Id, s2);
-    };
-
-    // Hilfsfunktion zum Addieren von Strafen
-    const addStrafeToStats = (statsMap, strafe) => {
-      const werferId = strafe.werfer._id.toString();
-      const s = statsMap.get(werferId) || { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 };
-      s.strafen += strafe.typeId.betrag;
-      statsMap.set(werferId, s);
-    };
-
-    // Current Tabelle: Nur aktuelle Teilnehmer, nur Matches dieses Spieltages
     const currentStats = new Map();
     currentSpieltag.teilnehmer.forEach(t => {
       currentStats.set(t._id.toString(), { user: t, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 });
     });
-    currentSpieltag.matches.forEach(m => addMatchToStats(currentStats, m));
-    currentStrafen.forEach(s => addStrafeToStats(currentStats, s));
+    currentMatches.forEach(m => {
+      const p1Id = m.spieler1._id.toString();
+      const p2Id = m.spieler2._id.toString();
+      const s1 = currentStats.get(p1Id);
+      const s2 = currentStats.get(p2Id);
+      s1.spiele += 1;
+      s2.spiele += 1;
+      s1.legsFor += m.legsSpieler1;
+      s1.legsAgainst += m.legsSpieler2;
+      s2.legsFor += m.legsSpieler2;
+      s2.legsAgainst += m.legsSpieler1;
+      if (m.legsSpieler1 > m.legsSpieler2) s1.punkte += calcPoints(m.legsSpieler1, m.legsSpieler2);
+      else if (m.legsSpieler2 > m.legsSpieler1) s2.punkte += calcPoints(m.legsSpieler2, m.legsSpieler1);
+    });
+    currentStrafen.forEach(s => {
+      const werferId = s.werfer._id.toString();
+      const betrag = s.typeId.betrag;
+      if (s.typeId.whoPays === 'werfer') {
+        const ws = currentStats.get(werferId);
+        if (ws) ws.strafen += betrag;
+      } else if (s.typeId.whoPays === 'alle_anderen') {
+        currentSpieltag.teilnehmer.forEach(t => {
+          const tId = t._id.toString();
+          if (tId !== werferId) {
+            const ts = currentStats.get(tId);
+            if (ts) ts.strafen += betrag;
+          }
+        });
+      }
+    });
 
-    // Overall Tabelle: Alle Matches ever, alle beteiligten Users
     const overallStats = new Map();
     allMatches.forEach(m => {
       const p1Id = m.spieler1._id.toString();
       const p2Id = m.spieler2._id.toString();
-      if (!overallStats.has(p1Id)) overallStats.set(p1Id, { user: m.spieler1, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 });
-      if (!overallStats.has(p2Id)) overallStats.set(p2Id, { user: m.spieler2, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 });
-      addMatchToStats(overallStats, m);
+      const s1 = overallStats.get(p1Id) || { user: m.spieler1, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 };
+      const s2 = overallStats.get(p2Id) || { user: m.spieler2, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 };
+      s1.spiele += 1;
+      s2.spiele += 1;
+      s1.legsFor += m.legsSpieler1;
+      s1.legsAgainst += m.legsSpieler2;
+      s2.legsFor += m.legsSpieler2;
+      s2.legsAgainst += m.legsSpieler1;
+      if (m.legsSpieler1 > m.legsSpieler2) s1.punkte += calcPoints(m.legsSpieler1, m.legsSpieler2);
+      else if (m.legsSpieler2 > m.legsSpieler1) s2.punkte += calcPoints(m.legsSpieler2, m.legsSpieler1);
+      overallStats.set(p1Id, s1);
+      overallStats.set(p2Id, s2);
     });
-    allStrafen.forEach(s => addStrafeToStats(overallStats, s));
+    allStrafen.forEach(s => {
+      const werferId = s.werfer._id.toString();
+      const betrag = s.typeId.betrag;
+      const spieltag = closedSpieltage.find(sp => sp._id.equals(s.spieltag));
+      if (spieltag) {
+        if (s.typeId.whoPays === 'werfer') {
+          const ws = overallStats.get(werferId) || { strafen: 0 };
+          ws.strafen += betrag;
+          overallStats.set(werferId, ws);
+        } else if (s.typeId.whoPays === 'alle_anderen') {
+          spieltag.teilnehmer.forEach(t => {
+            const tId = t._id.toString();
+            if (tId !== werferId) {
+              const ts = overallStats.get(tId) || { strafen: 0 };
+              ts.strafen += betrag;
+              overallStats.set(tId, ts);
+            }
+          });
+        }
+      }
+    });
 
-    // Hilfsfunktion zum Erstellen der Tabelle
     const makeTable = (statsMap) => {
       return Array.from(statsMap.values())
         .map(s => ({
