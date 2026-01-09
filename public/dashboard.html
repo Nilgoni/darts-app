@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Darts App Dashboard</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
 </head>
 <body class="bg-light">
   <div class="container mt-5">
@@ -117,8 +118,9 @@
             const erstellerName = s.ersteller ? s.ersteller.username : 'Unbekannt';
             const teilnehmerNames = s.teilnehmer ? s.teilnehmer.map(t => t.username).join(', ') : 'Keine Teilnehmer';
             activeHTML += `
-              <li class="list-group-item">
+              <li class="list-group-item d-flex justify-content-between align-items-center">
                 <a href="spieltag-view.html?id=${s._id}">${new Date(s.datum).toLocaleDateString('de-DE')} - Ersteller: ${erstellerName} - Teilnehmer: ${teilnehmerNames}</a>
+                <button class="btn btn-sm btn-danger" onclick="deleteSpieltag('${s._id}')"><i class="bi bi-trash"></i></button>
               </li>
             `;
           });
@@ -144,6 +146,28 @@
       } catch (err) {
         console.error('Fehler beim Laden der Spieltage:', err);
         alert('Fehler beim Laden der Spieltage: ' + err.message);
+      }
+    }
+
+    // Funktion zum Löschen eines Spieltages
+    async function deleteSpieltag(id) {
+      if (confirm('Bist du sicher, dass du diesen Spieltag löschen möchtest?')) {
+        try {
+          const res = await fetch(`/api/spieltag/${id}/delete`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const result = await res.json();
+          if (res.ok) {
+            alert('Spieltag gelöscht!');
+            loadSpieltage(); // Liste neu laden
+            loadOverallTabelle(); // Tabelle aktualisieren
+          } else {
+            alert(result.error);
+          }
+        } catch (err) {
+          alert('Fehler beim Löschen: ' + err.message);
+        }
       }
     }
 
