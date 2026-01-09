@@ -261,7 +261,7 @@ app.post('/api/spieltag/:id/delete', authenticate, async (req, res) => {
     // Lösche alle Matches des Spieltages
     await Match.deleteMany({ _id: { $in: spieltag.matches } });
     // Lösche den Spieltag
-    await spieltag.remove();
+    await spieltag.deleteOne();
     res.json({ message: 'Spieltag gelöscht' });
   } catch (err) {
     console.error('Fehler beim Löschen:', err);
