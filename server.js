@@ -46,6 +46,19 @@ const matchSchema = new mongoose.Schema({
   abgeschlossen: { type: Boolean, default: false }
 });
 const Match = mongoose.model('Match', matchSchema);
+const strafeSchema = new mongoose.Schema({
+  spieltag: { type: mongoose.Schema.Types.ObjectId, ref: 'Spieltag' },
+  werfer: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  typeId: { type: mongoose.Schema.Types.ObjectId, ref: 'StrafeType' },
+  datum: { type: Date, default: Date.now }
+});
+const Strafe = mongoose.model('Strafe', strafeSchema);
+const strafeTypeSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  whoPays: { type: String, enum: ['werfer', 'alle_anderen'], required: true },
+  betrag: { type: Number, required: true }
+});
+const StrafeType = mongoose.model('StrafeType', strafeTypeSchema);
 const authenticate = async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Kein Token' });
@@ -182,8 +195,8 @@ app.post('/api/reset-all', authenticate, async (req, res) => {
     await Match.deleteMany({});
     // Lösche alle Spieltage
     await Spieltag.deleteMany({});
-    // Optional: Setze User-Stats zurück, falls du Felder wie wins/losses im User-Model hast
-    // await User.updateMany({}, { $set: { wins: 0, losses: 0 } }); // Füge das hinzu, wenn nötig
+    // Lösche alle Strafen
+    await Strafe.deleteMany({});
     res.json({ message: 'Alles zurückgesetzt!' });
   } catch (err) {
     console.error('Fehler beim Reset:', err);
@@ -260,6 +273,8 @@ app.post('/api/spieltag/:id/delete', authenticate, async (req, res) => {
     if (spieltag.abgeschlossen) return res.status(400).json({ error: 'Nur offene Spieltage können gelöscht werden' });
     // Lösche alle Matches des Spieltages
     await Match.deleteMany({ _id: { $in: spieltag.matches } });
+    // Lösche alle Strafen des Spieltages
+    await Strafe.deleteMany({ spieltag: spieltag._id });
     // Lösche den Spieltag
     await spieltag.deleteOne();
     res.json({ message: 'Spieltag gelöscht' });
@@ -280,6 +295,82 @@ app.get('/api/spieltage', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Serverfehler' });
   }
 });
+app.post('/api/strafe/add', authenticate, async (req, res) => {
+  const { spieltagId, werferId, typeId } = req.body;
+  try {
+    const strafe = new Strafe({
+      spieltag: spieltagId,
+      werfer: werferId,
+      typeId
+    });
+    await strafe.save();
+    res.json({ message: 'Strafe eingetragen', strafeId: strafe._id });
+  } catch (err) {
+    console.error('Fehler beim Hinzufügen der Strafe:', err);
+    res.status(500).json({ error: 'Serverfehler' });
+  }
+});
+app.delete('/api/strafe/:id', authenticate, async (req, res) => {
+  try {
+    await Strafe.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Strafe gelöscht' });
+  } catch (err) {
+    console.error('Fehler beim Löschen der Strafe:', err);
+    res.status(500).json({ error: 'Serverfehler' });
+  }
+});
+app.get('/api/strafetypes', authenticate, async (req, res) => {
+  try {
+    const types = await StrafeType.find({});
+    res.json(types);
+  } catch (err) {
+    console.error('Fehler bei StrafeTypes laden:', err);
+    res.status(500).json({ error: 'Serverfehler' });
+  }
+});
+app.post('/api/strafetype/add', authenticate, async (req, res) => {
+  const { title, whoPays, betrag } = req.body;
+  try {
+    const type = new StrafeType({ title, whoPays, betrag });
+    await type.save();
+    res.json({ message: 'StrafeType angelegt' });
+  } catch (err) {
+    console.error('Fehler beim Anlegen:', err);
+    res.status(500).json({ error: 'Serverfehler' });
+  }
+});
+app.put('/api/strafetype/:id', authenticate, async (req, res) => {
+  const { title, whoPays, betrag } = req.body;
+  try {
+    await StrafeType.findByIdAndUpdate(req.params.id, { title, whoPays, betrag });
+    res.json({ message: 'StrafeType geändert' });
+  } catch (err) {
+    console.error('Fehler beim Ändern:', err);
+    res.status(500).json({ error: 'Serverfehler' });
+  }
+});
+app.delete('/api/strafetype/:id', authenticate, async (req, res) => {
+  try {
+    await StrafeType.findByIdAndDelete(req.params.id);
+    res.json({ message: 'StrafeType gelöscht' });
+  } catch (err) {
+    console.error('Fehler beim Löschen:', err);
+    res.status(500).json({ error: 'Serverfehler' });
+  }
+});
+app.get('/api/gesamtsumme', authenticate, async (req, res) => {
+  try {
+    const sum = await Strafe.aggregate([
+      { $lookup: { from: 'strafetypes', localField: 'typeId', foreignField: '_id', as: 'type' } },
+      { $unwind: '$type' },
+      { $group: { _id: null, total: { $sum: '$type.betrag' } } }
+    ]);
+    res.json({ total: sum.length ? sum[0].total : 0 });
+  } catch (err) {
+    console.error('Fehler bei Gesamtsumme:', err);
+    res.status(500).json({ error: 'Serverfehler' });
+  }
+});
 app.get('/api/overall-tabelle', authenticate, async (req, res) => {
   try {
     const closedSpieltage = await Spieltag.find({ abgeschlossen: true }).select('_id');
@@ -287,6 +378,9 @@ app.get('/api/overall-tabelle', authenticate, async (req, res) => {
     const allMatches = await Match.find({ abgeschlossen: true, spieltag: { $in: closedIds } })
       .populate('spieler1', 'username')
       .populate('spieler2', 'username');
+    const allStrafen = await Strafe.find({ spieltag: { $in: closedIds } })
+      .populate('werfer', 'username')
+      .populate('typeId');
 
     const calcPoints = (legsWin, legsLose) => {
       if (legsWin > legsLose) return (legsWin - legsLose >= 2) ? 3 : 2;
@@ -298,8 +392,8 @@ app.get('/api/overall-tabelle', authenticate, async (req, res) => {
       if (!match.abgeschlossen) return;
       const p1Id = match.spieler1._id.toString();
       const p2Id = match.spieler2._id.toString();
-      const s1 = statsMap.get(p1Id) || { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0 };
-      const s2 = statsMap.get(p2Id) || { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0 };
+      const s1 = statsMap.get(p1Id) || { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 };
+      const s2 = statsMap.get(p2Id) || { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 };
       s1.spiele += 1;
       s2.spiele += 1;
       s1.legsFor += match.legsSpieler1;
@@ -312,15 +406,24 @@ app.get('/api/overall-tabelle', authenticate, async (req, res) => {
       statsMap.set(p2Id, s2);
     };
 
+    // Hilfsfunktion zum Addieren von Strafen
+    const addStrafeToStats = (statsMap, strafe) => {
+      const werferId = strafe.werfer._id.toString();
+      const s = statsMap.get(werferId) || { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 };
+      s.strafen += strafe.typeId.betrag;
+      statsMap.set(werferId, s);
+    };
+
     // Overall Tabelle: Alle Matches ever, alle beteiligten Users
     const overallStats = new Map();
     allMatches.forEach(m => {
       const p1Id = m.spieler1._id.toString();
       const p2Id = m.spieler2._id.toString();
-      if (!overallStats.has(p1Id)) overallStats.set(p1Id, { user: m.spieler1, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0 });
-      if (!overallStats.has(p2Id)) overallStats.set(p2Id, { user: m.spieler2, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0 });
+      if (!overallStats.has(p1Id)) overallStats.set(p1Id, { user: m.spieler1, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 });
+      if (!overallStats.has(p2Id)) overallStats.set(p2Id, { user: m.spieler2, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 });
       addMatchToStats(overallStats, m);
     });
+    allStrafen.forEach(s => addStrafeToStats(overallStats, s));
 
     // Hilfsfunktion zum Erstellen der Tabelle
     const makeTable = (statsMap) => {
@@ -331,7 +434,8 @@ app.get('/api/overall-tabelle', authenticate, async (req, res) => {
           punkte: s.punkte,
           legsFor: s.legsFor,
           legsAgainst: s.legsAgainst,
-          diff: s.legsFor - s.legsAgainst
+          diff: s.legsFor - s.legsAgainst,
+          strafen: s.strafen
         }))
         .sort((a, b) => b.punkte - a.punkte || b.diff - a.diff || b.legsFor - a.legsFor);
     };
@@ -360,6 +464,12 @@ app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
     const allMatches = await Match.find({ abgeschlossen: true, spieltag: { $in: closedIds } })
       .populate('spieler1', 'username')
       .populate('spieler2', 'username');
+    const allStrafen = await Strafe.find({ spieltag: { $in: closedIds } })
+      .populate('werfer', 'username')
+      .populate('typeId');
+    const currentStrafen = await Strafe.find({ spieltag: req.params.spieltagId })
+      .populate('werfer', 'username')
+      .populate('typeId');
 
     const calcPoints = (legsWin, legsLose) => {
       if (legsWin > legsLose) return (legsWin - legsLose >= 2) ? 3 : 2;
@@ -371,8 +481,8 @@ app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
       if (!match.abgeschlossen) return;
       const p1Id = match.spieler1._id.toString();
       const p2Id = match.spieler2._id.toString();
-      const s1 = statsMap.get(p1Id) || { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0 };
-      const s2 = statsMap.get(p2Id) || { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0 };
+      const s1 = statsMap.get(p1Id) || { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 };
+      const s2 = statsMap.get(p2Id) || { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 };
       s1.spiele += 1;
       s2.spiele += 1;
       s1.legsFor += match.legsSpieler1;
@@ -385,22 +495,32 @@ app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
       statsMap.set(p2Id, s2);
     };
 
+    // Hilfsfunktion zum Addieren von Strafen
+    const addStrafeToStats = (statsMap, strafe) => {
+      const werferId = strafe.werfer._id.toString();
+      const s = statsMap.get(werferId) || { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 };
+      s.strafen += strafe.typeId.betrag;
+      statsMap.set(werferId, s);
+    };
+
     // Current Tabelle: Nur aktuelle Teilnehmer, nur Matches dieses Spieltages
     const currentStats = new Map();
     currentSpieltag.teilnehmer.forEach(t => {
-      currentStats.set(t._id.toString(), { user: t, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0 });
+      currentStats.set(t._id.toString(), { user: t, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 });
     });
     currentSpieltag.matches.forEach(m => addMatchToStats(currentStats, m));
+    currentStrafen.forEach(s => addStrafeToStats(currentStats, s));
 
     // Overall Tabelle: Alle Matches ever, alle beteiligten Users
     const overallStats = new Map();
     allMatches.forEach(m => {
       const p1Id = m.spieler1._id.toString();
       const p2Id = m.spieler2._id.toString();
-      if (!overallStats.has(p1Id)) overallStats.set(p1Id, { user: m.spieler1, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0 });
-      if (!overallStats.has(p2Id)) overallStats.set(p2Id, { user: m.spieler2, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0 });
+      if (!overallStats.has(p1Id)) overallStats.set(p1Id, { user: m.spieler1, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 });
+      if (!overallStats.has(p2Id)) overallStats.set(p2Id, { user: m.spieler2, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, strafen: 0 });
       addMatchToStats(overallStats, m);
     });
+    allStrafen.forEach(s => addStrafeToStats(overallStats, s));
 
     // Hilfsfunktion zum Erstellen der Tabelle
     const makeTable = (statsMap) => {
@@ -411,7 +531,8 @@ app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
           punkte: s.punkte,
           legsFor: s.legsFor,
           legsAgainst: s.legsAgainst,
-          diff: s.legsFor - s.legsAgainst
+          diff: s.legsFor - s.legsAgainst,
+          strafen: s.strafen
         }))
         .sort((a, b) => b.punkte - a.punkte || b.diff - a.diff || b.legsFor - a.legsFor);
     };
