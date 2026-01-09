@@ -111,6 +111,32 @@
       }
     }
 
+    async function closeSpieltag() {
+  if (confirm('Spieltag wirklich beenden? Danach keine Änderungen mehr möglich.')) {
+    try {
+      const res = await fetch(`/api/spieltag/${spieltagId}/close`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const result = await res.json();
+      if (res.ok) {
+        alert('Spieltag beendet!');
+        loadSpieltag();
+      } else {
+        alert(result.error);
+      }
+    } catch (err) {
+      alert('Fehler beim Beenden');
+    }
+  }
+}
+
+// Füge Button ins UI (z.B. nach #matches)
+document.getElementById('matches').insertAdjacentHTML('afterend', `
+  <button id="closeBtn" class="btn btn-warning mt-3">Spieltag beenden</button>
+`);
+document.getElementById('closeBtn').addEventListener('click', closeSpieltag);
+
     async function saveMatch(matchId) {
       const legs1 = parseInt(document.getElementById(`legs1_${matchId}`).value) || 0;
       const legs2 = parseInt(document.getElementById(`legs2_${matchId}`).value) || 0;
