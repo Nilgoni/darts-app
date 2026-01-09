@@ -1,238 +1,191 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Darts App Dashboard</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Darts App Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
-  <div class="container mt-5">
-    <h1 class="mb-4">Darts App Dashboard</h1>
-    <p>Willkommen! Hier kannst du neue Spieltage anlegen.</p>
-    <div class="row g-4">
-      <div class="col-md-6">
-        <button id="createSpieltagBtn" class="btn btn-primary btn-lg w-100">Neuen Spieltag anlegen</button>
-      </div>
-      <div class="col-md-6">
-        <button id="logoutBtn" class="btn btn-secondary btn-lg w-100">Ausloggen</button>
-      </div>
+    <div class="container mt-5">
+        <h1 class="mb-4">Darts App Dashboard</h1>
+        <p>Willkommen! Hier kannst du neue Spieltage anlegen.</p>
+
+        <a href="/spieltag-create" class="btn btn-primary mb-3">Neuen Spieltag anlegen</a>
+        <a href="/logout" class="btn btn-secondary mb-3">Ausloggen</a>
+        <a href="/strafen-manage" class="btn btn-info mb-3">Strafen managen</a>
+
+        <button id="resetAll" class="btn btn-danger mb-3">Alles zurücksetzen</button>
+
+        <h4 class="mt-5">Aktuelle Spieltage (bearbeitbar)</h4>
+        <ul id="aktuelleSpieltage" class="list-group mb-4"></ul>
+
+        <h4>Abgeschlossene Spieltage (nur Ansicht)</h4>
+        <ul id="abgeschlosseneSpieltage" class="list-group mb-4"></ul>
+
+        <h5 id="gesamtStrafen">Gesamte Strafen: 0.00 €</h5>
+        <div id="strafenPerSpieler"></div>
+
+        <h4 class="mt-5">Ewige Tabelle</h4>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Platz</th>
+                    <th>Spieler</th>
+                    <th>Spiele</th>
+                    <th>Punkte</th>
+                    <th>Legs</th>
+                    <th>Diff</th>
+                </tr>
+            </thead>
+            <tbody id="ewigeTabelle"></tbody>
+        </table>
     </div>
-    <button id="manageStrafenBtn" class="btn btn-info mt-3">Strafen managen</button>
-    <div id="spieltage-container"></div>
-    <div id="gesamtsumme" class="mt-4"></div>
-    <div id="tabelle-container"></div>
-  </div>
 
-  <script>
-    const token = localStorage.getItem('token');
-    if (!token) {
-      alert('Du bist nicht eingeloggt!');
-      window.location.href = 'index.html';
-    }
-    // Token prüfen
-    fetch('/api/protected', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-    .then(res => {
-      if (!res.ok) throw new Error();
-    })
-    .catch(() => {
-      alert('Sitzung abgelaufen. Bitte neu einloggen.');
-      localStorage.removeItem('token');
-      window.location.href = 'index.html';
-    });
-    // Ausloggen
-    document.getElementById('logoutBtn').addEventListener('click', () => {
-      localStorage.removeItem('token');
-      alert('Erfolgreich ausgeloggt');
-      window.location.href = 'index.html';
-    });
-    // Neuen Spieltag anlegen Button
-    document.getElementById('createSpieltagBtn').addEventListener('click', () => {
-      window.location.href = 'spieltag-create.html';
-    });
-    // Strafen managen Button
-    document.getElementById('manageStrafenBtn').addEventListener('click', () => {
-      window.location.href = 'strafen-manage.html';
-    });
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchSpieltage();
+            fetchStrafen();
+            fetchEwigeTabelle();
 
-    // Neu: User-Info laden, um zu checken, ob Bernd
-    let currentUsername = '';
-    async function loadUserInfo() {
-      try {
-        const res = await fetch('/api/user', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) throw new Error('Fehler beim Laden des Users');
-        const data = await res.json();
-        currentUsername = data.username;
-
-        // Wenn Bernd, füge Reset-Button hinzu
-        if (currentUsername === 'Bernd') {
-          const row = document.querySelector('.row.g-4');
-          row.insertAdjacentHTML('beforeend', `
-            <div class="col-md-6">
-              <button id="resetBtn" class="btn btn-danger btn-lg w-100">Alles zurücksetzen</button>
-            </div>
-          `);
-          // Event-Listener für Reset
-          document.getElementById('resetBtn').addEventListener('click', async () => {
-            if (confirm('Bist du sicher? Das löscht ALLE Spieltage und Matches unwiderruflich!')) {
-              try {
-                const res = await fetch('/api/reset-all', {
-                  method: 'POST',
-                  headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const result = await res.json();
-                if (res.ok) {
-                  alert('Alles zurückgesetzt!');
-                  loadSpieltage(); // Aktualisiere die Liste
-                  loadOverallTabelle(); // Aktualisiere die Tabelle
-                } else {
-                  alert(result.error);
+            document.getElementById('resetAll').addEventListener('click', () => {
+                if (confirm('Wirklich alles zurücksetzen?')) {
+                    fetch('/api/reset-all', { method: 'POST' })
+                        .then(() => location.reload());
                 }
-              } catch (err) {
-                alert('Fehler beim Reset');
-              }
+            });
+        });
+
+        function fetchSpieltage() {
+            fetch('/api/spieltage')
+                .then(res => res.json())
+                .then(spieltage => {
+                    const aktuelle = document.getElementById('aktuelleSpieltage');
+                    const abgeschlossene = document.getElementById('abgeschlosseneSpieltage');
+                    aktuelle.innerHTML = '';
+                    abgeschlossene.innerHTML = '';
+
+                    spieltage.forEach(spieltag => {
+                        const datum = new Date(spieltag.datum).toLocaleDateString('de-DE');
+                        const teilnehmerNamen = spieltag.teilnehmer.map(t => t.username).join(' - ');
+                        const listItem = document.createElement('li');
+                        listItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+                        listItem.innerHTML = `${datum} - ${teilnehmerNamen}`;
+
+                        if (!spieltag.abgeschlossen) {
+                            const editBtn = document.createElement('a');
+                            editBtn.href = `/spieltag-view/${spieltag._id}`;
+                            editBtn.className = 'btn btn-sm btn-primary';
+                            editBtn.innerText = 'Bearbeiten';
+                            listItem.appendChild(editBtn);
+                        }
+
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.className = 'btn btn-sm btn-danger';
+                        deleteBtn.innerText = 'Löschen';
+                        deleteBtn.onclick = () => deleteSpieltag(spieltag._id);
+                        listItem.appendChild(deleteBtn);
+
+                        if (spieltag.abgeschlossen) {
+                            abgeschlossene.appendChild(listItem);
+                        } else {
+                            aktuelle.appendChild(listItem);
+                        }
+                    });
+                });
+        }
+
+        function deleteSpieltag(id) {
+            if (confirm('Spieltag löschen?')) {
+                fetch(`/api/spieltag/${id}`, { method: 'DELETE' })
+                    .then(() => fetchSpieltage());
             }
-          });
         }
-      } catch (err) {
-        console.error('Fehler beim Laden des Users:', err);
-        alert('Fehler beim Laden des Users: ' + err.message);
-      }
-    }
 
-    // Spieltage laden und anzeigen
-    async function loadSpieltage() {
-      try {
-        const res = await fetch('/api/spieltage', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) throw new Error('Fehler beim Laden: Status ' + res.status);
-        const spieltage = await res.json();
-        console.log('Geladene Spieltage:', spieltage); // Debug-Log
-        const active = spieltage.filter(s => !s.abgeschlossen);
-        const closed = spieltage.filter(s => s.abgeschlossen);
-        let activeHTML = '<h3 class="mt-5">Aktuelle Spieltage (bearbeitbar)</h3><ul class="list-group">';
-        if (active.length === 0) {
-          activeHTML += '<li class="list-group-item">Keine aktiven Spieltage</li>';
-        } else {
-          active.forEach(s => {
-            const erstellerName = s.ersteller ? s.ersteller.username : 'Unbekannt';
-            const teilnehmerNames = s.teilnehmer ? s.teilnehmer.map(t => t.username).join(', ') : 'Keine Teilnehmer';
-            activeHTML += `
-              <li class="list-group-item d-flex justify-content-between align-items-center">
-                <a href="spieltag-view.html?id=${s._id}">${new Date(s.datum).toLocaleDateString('de-DE')} - Ersteller: ${erstellerName} - Teilnehmer: ${teilnehmerNames}</a>
-                <button class="btn btn-sm btn-danger" onclick="deleteSpieltag('${s._id}')"><i class="bi bi-trash"></i></button>
-              </li>
-            `;
-          });
+        function fetchStrafen() {
+            fetch('/api/strafen')
+                .then(res => res.json())
+                .then(strafen => {
+                    const strafenPerSpieler = new Map();
+                    let gesamtStrafen = 0;
+
+                    strafen.forEach(strafe => {
+                        const betrag = strafe.type.betrag;
+                        const whoPays = strafe.type.whoPays;
+                        const werferUsername = strafe.werfer.username;
+                        const teilnehmer = strafe.spieltag.teilnehmer; // Array von User-Objekten
+
+                        if (whoPays === 'werfer') {
+                            let current = strafenPerSpieler.get(werferUsername) || 0;
+                            strafenPerSpieler.set(werferUsername, current + betrag);
+                            gesamtStrafen += betrag;
+                        } else if (whoPays === 'alle_anderen') {
+                            teilnehmer.forEach(spieler => {
+                                if (spieler.username !== werferUsername) {
+                                    let current = strafenPerSpieler.get(spieler.username) || 0;
+                                    strafenPerSpieler.set(spieler.username, current + betrag);
+                                    gesamtStrafen += betrag;
+                                }
+                            });
+                        }
+                    });
+
+                    document.getElementById('gesamtStrafen').innerText = `Gesamte Strafen: ${gesamtStrafen.toFixed(2)} €`;
+
+                    // Pro Spieler anzeigen
+                    const container = document.getElementById('strafenPerSpieler');
+                    let html = '<h5>Strafen pro Spieler:</h5><ul class="list-group">';
+                    for (let [name, sum] of strafenPerSpieler) {
+                        if (sum > 0) {
+                            html += `<li class="list-group-item">${name}: ${sum.toFixed(2)} €</li>`;
+                        }
+                    }
+                    html += '</ul>';
+                    container.innerHTML = html;
+                });
         }
-        activeHTML += '</ul>';
-        let closedHTML = '<h3 class="mt-4">Abgeschlossene Spieltage (nur Ansicht)</h3><ul class="list-group">';
-        if (closed.length === 0) {
-          closedHTML += '<li class="list-group-item">Keine abgeschlossenen Spieltage</li>';
-        } else {
-          closed.forEach(s => {
-            const erstellerName = s.ersteller ? s.ersteller.username : 'Unbekannt';
-            const teilnehmerNames = s.teilnehmer ? s.teilnehmer.map(t => t.username).join(', ') : 'Keine Teilnehmer';
-            closedHTML += `
-              <li class="list-group-item">
-                <a href="spieltag-view.html?id=${s._id}">${new Date(s.datum).toLocaleDateString('de-DE')} - Ersteller: ${erstellerName} - Teilnehmer: ${teilnehmerNames}</a>
-              </li>
-            `;
-          });
+
+        function fetchEwigeTabelle() {
+            fetch('/api/spieltage')
+                .then(res => res.json())
+                .then(spieltage => {
+                    const stats = new Map();
+
+                    spieltage.forEach(spieltag => {
+                        if (spieltag.abgeschlossen) {
+                            spieltag.ergebnisse.forEach(ergebnis => {
+                                const spieler = ergebnis.spieler.username;
+                                if (!stats.has(spieler)) {
+                                    stats.set(spieler, { spiele: 0, punkte: 0, legsGew: 0, legsVer: 0 });
+                                }
+                                const stat = stats.get(spieler);
+                                stat.spiele++;
+                                stat.punkte += ergebnis.punkte;
+                                stat.legsGew += ergebnis.legs.gewonnene;
+                                stat.legsVer += ergebnis.legs.verlorene;
+                            });
+                        }
+                    });
+
+                    const sortedStats = Array.from(stats.entries()).sort((a, b) => b[1].punkte - a[1].punkte);
+                    const tabelle = document.getElementById('ewigeTabelle');
+                    tabelle.innerHTML = '';
+
+                    sortedStats.forEach((entry, index) => {
+                        const [spieler, stat] = entry;
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${index + 1}</td>
+                            <td>${spieler}</td>
+                            <td>${stat.spiele}</td>
+                            <td>${stat.punkte}</td>
+                            <td>${stat.legsGew}:${stat.legsVer}</td>
+                            <td>${stat.legsGew - stat.legsVer}</td>
+                        `;
+                        tabelle.appendChild(row);
+                    });
+                });
         }
-        closedHTML += '</ul>';
-        const spieltageContainer = document.getElementById('spieltage-container');
-        spieltageContainer.innerHTML = activeHTML + closedHTML;
-      } catch (err) {
-        console.error('Fehler beim Laden der Spieltage:', err);
-        alert('Fehler beim Laden der Spieltage: ' + err.message);
-      }
-    }
-
-    // Funktion zum Löschen eines Spieltages
-    async function deleteSpieltag(id) {
-      if (confirm('Bist du sicher, dass du diesen Spieltag löschen möchtest?')) {
-        try {
-          const res = await fetch(`/api/spieltag/${id}/delete`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (res.ok) {
-            const result = await res.json();
-            alert('Spieltag gelöscht!');
-            loadSpieltage(); // Liste neu laden
-            loadOverallTabelle(); // Tabelle aktualisieren
-          } else {
-            const result = await res.json();
-            alert(result.error || 'Unbekannter Fehler');
-          }
-        } catch (err) {
-          alert('Fehler beim Löschen: ' + err.message);
-        }
-      }
-    }
-
-    // Ewige Tabelle laden und anzeigen
-    async function loadOverallTabelle() {
-      try {
-        const res = await fetch('/api/overall-tabelle', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) throw new Error('Fehler beim Laden der Tabelle: Status ' + res.status);
-        const data = await res.json();
-
-        let tableHTML = '<h3 class="mt-5">Ewige Tabelle</h3><table class="table"><thead><tr><th>Platz</th><th>Spieler</th><th>Spiele</th><th>Punkte</th><th>Legs</th><th>Diff</th></tr></thead><tbody>';
-        if (data.length === 0) {
-          tableHTML += '<tr><td colspan="6">Keine Daten verfügbar</td></tr>';
-        } else {
-          data.forEach((row, index) => {
-            tableHTML += `
-              <tr>
-                <td>${index + 1}</td>
-                <td>${row.username}</td>
-                <td>${row.spiele}</td>
-                <td>${row.punkte}</td>
-                <td>${row.legsFor}:${row.legsAgainst}</td>
-                <td>${row.diff}</td>
-              </tr>
-            `;
-          });
-        }
-        tableHTML += '</tbody></table>';
-
-        const tabelleContainer = document.getElementById('tabelle-container');
-        tabelleContainer.innerHTML = tableHTML;
-      } catch (err) {
-        console.error('Fehler beim Laden der Ewigen Tabelle:', err);
-        alert('Fehler beim Laden der Ewigen Tabelle: ' + err.message);
-      }
-    }
-
-    // Gesamtsumme laden
-    async function loadGesamtsumme() {
-      try {
-        const res = await fetch('/api/gesamtsumme', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const data = await res.json();
-        document.getElementById('gesamtsumme').innerHTML = `<p>Gesamte Strafen: ${data.total.toFixed(2)}€</p>`;
-      } catch (err) {
-        console.error('Fehler beim Laden der Gesamtsumme:', err);
-      }
-    }
-
-    // Lade alles beim Start
-    loadUserInfo().then(() => {
-      loadSpieltage();
-      loadOverallTabelle();
-      loadGesamtsumme();
-    });
-  </script>
+    </script>
 </body>
 </html>
