@@ -275,6 +275,7 @@ app.get('/api/spieltage', authenticate, async (req, res) => {
 app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
   try {
     const currentSpieltag = await Spieltag.findById(req.params.spieltagId)
+      .populate('teilnehmer')
       .populate({
         path: 'matches',
         populate: [
@@ -282,22 +283,24 @@ app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
           { path: 'spieler2', select: 'username' }
         ]
       });
+    if (!currentSpieltag) return res.status(404).json({ error: 'Spieltag nicht gefunden' });
+
     const allMatches = await Match.find({ abgeschlossen: true })
       .populate('spieler1', 'username')
       .populate('spieler2', 'username');
+
     const calcPoints = (legsWin, legsLose) => {
       if (legsWin > legsLose) return (legsWin - legsLose >= 2) ? 3 : 2;
       return 0;
     };
-    const stats = new Map();
-    const addMatchToStats = (match, isCurrentOnly = false) => {
+
+    // Hilfsfunktion zum Addieren von Stats
+    const addMatchToStats = (statsMap, match) => {
       if (!match.abgeschlossen) return;
-      const p1 = match.spieler1._id.toString();
-      const p2 = match.spieler2._id.toString();
-      if (!stats.has(p1)) stats.set(p1, { user: match.spieler1, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, currentOnly: { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0 } });
-      if (!stats.has(p2)) stats.set(p2, { user: match.spieler2, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0, currentOnly: { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0 } });
-      const s1 = stats.get(p1);
-      const s2 = stats.get(p2);
+      const p1Id = match.spieler1._id.toString();
+      const p2Id = match.spieler2._id.toString();
+      const s1 = statsMap.get(p1Id) || { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0 };
+      const s2 = statsMap.get(p2Id) || { spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0 };
       s1.spiele += 1;
       s2.spiele += 1;
       s1.legsFor += match.legsSpieler1;
@@ -306,32 +309,42 @@ app.get('/api/tabelle/:spieltagId', authenticate, async (req, res) => {
       s2.legsAgainst += match.legsSpieler1;
       if (match.legsSpieler1 > match.legsSpieler2) s1.punkte += calcPoints(match.legsSpieler1, match.legsSpieler2);
       else if (match.legsSpieler2 > match.legsSpieler1) s2.punkte += calcPoints(match.legsSpieler2, match.legsSpieler1);
-      if (!isCurrentOnly) {
-        s1.currentOnly.spiele += 1;
-        s2.currentOnly.spiele += 1;
-        s1.currentOnly.legsFor += match.legsSpieler1;
-        s1.currentOnly.legsAgainst += match.legsSpieler2;
-        s2.currentOnly.legsFor += match.legsSpieler2;
-        s2.currentOnly.legsAgainst += match.legsSpieler1;
-        if (match.legsSpieler1 > match.legsSpieler2) s1.currentOnly.punkte += calcPoints(match.legsSpieler1, match.legsSpieler2);
-        else if (match.legsSpieler2 > match.legsSpieler1) s2.currentOnly.punkte += calcPoints(match.legsSpieler2, match.legsSpieler1);
-      }
+      statsMap.set(p1Id, s1);
+      statsMap.set(p2Id, s2);
     };
-    currentSpieltag.matches.forEach(m => addMatchToStats(m, true));
-    allMatches.forEach(m => addMatchToStats(m));
-    const makeTable = (data) => {
-      return Array.from(stats.values())
+
+    // Current Tabelle: Nur aktuelle Teilnehmer, nur Matches dieses Spieltages
+    const currentStats = new Map();
+    currentSpieltag.teilnehmer.forEach(t => {
+      currentStats.set(t._id.toString(), { user: t, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0 });
+    });
+    currentSpieltag.matches.forEach(m => addMatchToStats(currentStats, m));
+
+    // Overall Tabelle: Alle Matches ever, alle beteiligten Users
+    const overallStats = new Map();
+    allMatches.forEach(m => {
+      const p1Id = m.spieler1._id.toString();
+      const p2Id = m.spieler2._id.toString();
+      if (!overallStats.has(p1Id)) overallStats.set(p1Id, { user: m.spieler1, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0 });
+      if (!overallStats.has(p2Id)) overallStats.set(p2Id, { user: m.spieler2, spiele: 0, punkte: 0, legsFor: 0, legsAgainst: 0 });
+      addMatchToStats(overallStats, m);
+    });
+
+    // Hilfsfunktion zum Erstellen der Tabelle
+    const makeTable = (statsMap) => {
+      return Array.from(statsMap.values())
         .map(s => ({
           username: s.user.username,
-          spiele: data ? s.currentOnly.spiele : s.spiele,
-          punkte: data ? s.currentOnly.punkte : s.punkte,
-          legsFor: data ? s.currentOnly.legsFor : s.legsFor,
-          legsAgainst: data ? s.currentOnly.legsAgainst : s.legsAgainst,
-          diff: (data ? s.currentOnly.legsFor - s.currentOnly.legsAgainst : s.legsFor - s.legsAgainst)
+          spiele: s.spiele,
+          punkte: s.punkte,
+          legsFor: s.legsFor,
+          legsAgainst: s.legsAgainst,
+          diff: s.legsFor - s.legsAgainst
         }))
         .sort((a, b) => b.punkte - a.punkte || b.diff - a.diff || b.legsFor - a.legsFor);
     };
-    res.json({ current: makeTable(true), overall: makeTable(false) });
+
+    res.json({ current: makeTable(currentStats), overall: makeTable(overallStats) });
   } catch (err) {
     console.error('Fehler bei Tabelle:', err);
     res.status(500).json({ error: 'Serverfehler' });
