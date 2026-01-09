@@ -18,6 +18,8 @@
         <button id="logoutBtn" class="btn btn-secondary btn-lg w-100">Ausloggen</button>
       </div>
     </div>
+    <div id="spieltage-container"></div>
+    <div id="tabelle-container"></div>
   </div>
 
   <script>
@@ -131,14 +133,8 @@
           });
         }
         closedHTML += '</ul>';
-        const container = document.querySelector('.row.g-4');
-        // Entferne alte Listen, falls vorhanden
-        let nextSib = container.nextElementSibling;
-        while (nextSib && (nextSib.tagName === 'H3' || nextSib.tagName === 'UL')) {
-          nextSib.remove();
-          nextSib = container.nextElementSibling;
-        }
-        container.insertAdjacentHTML('afterend', activeHTML + closedHTML);
+        const spieltageContainer = document.getElementById('spieltage-container');
+        spieltageContainer.innerHTML = activeHTML + closedHTML;
       } catch (err) {
         console.error('Fehler beim Laden der Spieltage:', err);
       }
@@ -172,9 +168,8 @@
         }
         tableHTML += '</tbody></table>';
 
-        const container = document.querySelector('.container');
-        // Füge nach den Spieltagen hinzu (am Ende des Containers)
-        container.insertAdjacentHTML('beforeend', tableHTML);
+        const tabelleContainer = document.getElementById('tabelle-container');
+        tabelleContainer.innerHTML = tableHTML;
       } catch (err) {
         console.error('Fehler beim Laden der Ewigen Tabelle:', err);
       }
