@@ -56,19 +56,6 @@
     document.getElementById('addStrafeBtn').addEventListener('click', async () => {
       document.getElementById('strafeStep1').classList.remove('d-none');
       document.getElementById('strafeStep2').classList.add('d-none');
-      const res = await fetch('/api/strafetypes', { headers: { 'Authorization': `Bearer ${token}` } });
-      if (res.ok) {
-        const types = await res.json();
-        const strafeList = document.getElementById('strafeList');
-        strafeList.innerHTML = '';
-        types.forEach(t => {
-          strafeList.innerHTML += `
-            <li class="list-group-item list-group-item-action" data-typeid="${t._id}" data-betrag="${t.betrag}">${t.title} (${t.betrag}€ - ${t.whoPays})</li>
-          `;
-        });
-      } else {
-        alert('Fehler beim Laden der Strafen-Typen');
-      }
       strafeModal.show();
     });
 
@@ -157,20 +144,28 @@
             },
             body: JSON.stringify({ spieltagId, werferId: currentWerferId, typeId })
           });
+          const result = await res.json();
           if (res.ok) {
-            const result = await res.json();
             strafeModal.hide();
-            if (confirm('Strafe eingetragen! Rückgängig machen?')) {
-              await fetch(`/api/strafe/${result.strafeId}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
-              });
-              alert('Strafe rückgängig gemacht');
+            alert('Strafe eingetragen!');
+            if (confirm('Rückgängig machen?')) {
+              try {
+                const deleteRes = await fetch(`/api/strafe/${result.strafeId}`, {
+                  method: 'DELETE',
+                  headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (deleteRes.ok) {
+                  alert('Strafe rückgängig gemacht');
+                } else {
+                  alert('Fehler beim Rückgängig machen');
+                }
+              } catch (deleteErr) {
+                alert('Fehler beim Rückgängig machen');
+              }
             }
             loadTabellen(); // Tabellen aktualisieren
           } else {
-            const result = await res.json();
-            alert(result.error || 'Unbekannter Fehler');
+            alert(result.error);
           }
         } catch (err) {
           alert('Fehler beim Hinzufügen');
