@@ -56,6 +56,29 @@
     document.getElementById('addStrafeBtn').addEventListener('click', async () => {
       document.getElementById('strafeStep1').classList.remove('d-none');
       document.getElementById('strafeStep2').classList.add('d-none');
+      try {
+        const res = await fetch('/api/strafetypes', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        console.log('Fetch-Response Status:', res.status); // Debug
+        if (!res.ok) throw new Error('Fehler beim Laden der Strafen-Typen: Status ' + res.status);
+        const types = await res.json();
+        console.log('Geladene Strafen-Typen:', types); // Debug
+        const strafeList = document.getElementById('strafeList');
+        strafeList.innerHTML = '';
+        if (types.length === 0) {
+          strafeList.innerHTML = '<li class="list-group-item">Keine Strafen verfügbar</li>';
+        } else {
+          types.forEach(t => {
+            strafeList.innerHTML += `
+              <li class="list-group-item list-group-item-action" data-typeid="${t._id}" data-betrag="${t.betrag}">${t.title} (${t.betrag}€ - ${t.whoPays})</li>
+            `;
+          });
+        }
+      } catch (err) {
+        console.error('Fehler beim Laden der Strafen-Typen:', err);
+        alert('Fehler beim Laden der Strafen-Typen: ' + err.message);
+      }
       strafeModal.show();
     });
 
@@ -147,8 +170,8 @@
           const result = await res.json();
           if (res.ok) {
             strafeModal.hide();
-            alert('Strafe eingetragen!');
-            if (confirm('Rückgängig machen?')) {
+            const undo = confirm('Strafe eingetragen! Rückgängig machen?');
+            if (undo) {
               try {
                 const deleteRes = await fetch(`/api/strafe/${result.strafeId}`, {
                   method: 'DELETE',
@@ -162,6 +185,8 @@
               } catch (deleteErr) {
                 alert('Fehler beim Rückgängig machen');
               }
+            } else {
+              alert('Strafe eingetragen!');
             }
             loadTabellen(); // Tabellen aktualisieren
           } else {
